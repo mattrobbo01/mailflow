@@ -1,0 +1,17 @@
+appId: com.mattrobertson.mailflow
+productName: MailFlow
+directories:
+  buildResources: build
+files:
+  - out/**
+  - package.json
+asarUnpack:
+  - node_modules/better-sqlite3/**
+mac:
+  target: dir
+  identity: LocalFlow Dev
+  hardenedRuntime: false
+  gatekeeperAssess: false
+  extendInfo:
+    NSMicrophoneUsageDescription: MailFlow records your side of meetings for local transcription.
+    NSAudioCaptureUsageDescription: MailFlow captures meeting audio to transcribe your calls locally on this Mac.

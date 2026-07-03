@@ -1,0 +1,58 @@
+@import 'tailwindcss';
+
+:root {
+  --accent-work: #34d399;
+  --accent-personal: #60a5fa;
+}
+
+html, body, #root {
+  height: 100%;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgb(63 63 70 / 0.6);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Instant tooltips: <button data-tip="Archive (E)"> — add .tip-right to flip side */
+[data-tip] {
+  position: relative;
+}
+[data-tip]::after {
+  content: attr(data-tip);
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%) scale(0.96);
+  background: #0d0f12;
+  color: #d7dbe0;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid rgb(255 255 255 / 0.12);
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 80ms ease 200ms, transform 80ms ease 200ms;
+  z-index: 200;
+}
+[data-tip]:hover::after {
+  opacity: 1;
+  transform: translateX(-50%) scale(1);
+}
+.tip-right[data-tip]::after {
+  top: 50%;
+  left: calc(100% + 8px);
+  transform: translateY(-50%) scale(0.96);
+}
+.tip-right[data-tip]:hover::after {
+  transform: translateY(-50%) scale(1);
+}
