@@ -82,7 +82,7 @@ export function forwardSeed(thread: ThreadSummary, message: Message): ComposerSe
   }
 }
 
-const SCHEDULE_PRESETS: { label: string; at: () => Date }[] = [
+export const SCHEDULE_PRESETS: { label: string; at: () => Date }[] = [
   { label: 'Tomorrow 8am', at: () => { const d = new Date(); d.setDate(d.getDate() + 1); d.setHours(8, 0, 0, 0); return d } },
   { label: 'Tomorrow 1pm', at: () => { const d = new Date(); d.setDate(d.getDate() + 1); d.setHours(13, 0, 0, 0); return d } },
   { label: 'Monday 8am', at: () => { const d = new Date(); d.setDate(d.getDate() + ((8 - d.getDay()) % 7 || 7)); d.setHours(8, 0, 0, 0); return d } },
@@ -166,7 +166,7 @@ const recipientInputCls =
   'w-full bg-transparent py-1.5 text-[13px] text-zinc-200 outline-none placeholder:text-zinc-600'
 
 /** Comma-separated recipient input with address-book typeahead (↑↓ + Enter/Tab to pick). */
-function RecipientInput({
+export function RecipientInput({
   value, onChange, placeholder, inputRef
 }: {
   value: string

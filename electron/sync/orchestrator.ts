@@ -7,6 +7,7 @@ import { syncAccount } from './incremental'
 import { startDrainLoop } from './modifier-queue'
 import { processDueJobs } from './send'
 import { startHubSpotLoop } from '../hubspot/sync'
+import { broadcast } from '../broadcast'
 
 const FOCUSED_INTERVAL = 20_000
 const BLURRED_INTERVAL = 120_000
@@ -14,12 +15,6 @@ const BLURRED_INTERVAL = 120_000
 let timer: NodeJS.Timeout | null = null
 let running = false
 const backfilling = new Set<string>()
-
-function broadcast(channel: string, payload: unknown) {
-  for (const win of BrowserWindow.getAllWindows()) {
-    win.webContents.send(channel, payload)
-  }
-}
 
 /** Dock badge = unread, not-done, focused (people) inbox threads. */
 export function updateBadge() {

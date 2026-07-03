@@ -45,9 +45,11 @@ export function emailDocument(sanitizedHtml: string): string {
   return `<!doctype html><html><head><meta charset="utf-8">
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: cid: https: http:; style-src 'unsafe-inline'">
     <style>
-      html { background: transparent; }
+      /* Must match the embedder's color-scheme: a mismatch makes the browser
+         force an opaque white canvas behind this (otherwise transparent) frame. */
+      html { background: transparent; overflow-x: hidden; color-scheme: dark; }
       body { font: 13.5px/1.6 -apple-system, BlinkMacSystemFont, sans-serif;
-             margin: 0; padding: 14px 16px; word-break: break-word; }
+             margin: 0; padding: 14px 16px; word-break: break-word; overflow-x: hidden; }
       body, body * {
         color: #dde1e6 !important;
         background-color: transparent !important;

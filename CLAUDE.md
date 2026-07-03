@@ -41,6 +41,20 @@ so grants survive rebuilds). Icon: `swift scripts/make-icon.swift` → build/ico
   overlap ≥0.7 within 12s), robbo2-export.ts (vault frontmatter contract, `source: mailflow`)
 - `electron/runner.ts` — `MailFlow --runner` headless: fires scheduled sends/unsnoozes
   (launchd/com.mattrobertson.mailflow.runner.plist; install via scripts/install-launchd.sh)
+- `electron/bridge.ts` — iPhone PWA bridge: HTTP server on 0.0.0.0:8484 serving out/renderer
+  as the app shell + the ipc.ts handler map over `POST /rpc/:channel` + SSE `GET /events`
+  (whitelist in SSE_CHANNELS) + `GET /attachment`. Pairing key in
+  `~/Library/Application Support/MailFlow/bridge.json`; data routes require it
+  (?key= or X-MailFlow-Key), the static shell doesn't. electron/broadcast.ts fans events
+  out to windows AND SSE clients — new main-process events must use it, not webContents.send.
+- `src/lib/bridge-web.ts` — browser implementation of window.mailflow (fetch + EventSource);
+  keep its channel map in lockstep with preload.ts. main.tsx installs it when no preload
+  is present and renders src/mobile/MobileApp (≤700px) instead of App.
+- `src/mobile/` — Spark-style phone UI: InboxScreen (groups, date sections, swipe
+  right=done / left=snooze, pull-to-refresh, FAB), ThreadScreen (bottom action bar,
+  profile icon → PersonSheet bottom sheet wrapping PeopleSidebar), ComposeScreen,
+  SearchScreen, Drawer. Reuses MessageCard/ScheduledCard from ThreadView and
+  RecipientInput/seeds from Composer (exported for this).
 - `sidecar/` — Swift `meetingscribe`: Core Audio process tap (**kAudioAggregateDeviceTapAutoStartKey
   is load-bearing**) + mic (NO voice-processing — zeroes buffers on this hardware) → Parakeet
   ASR (FluidAudio, models shared with LocalFlow) + WeSpeaker diarization on sys channel
@@ -65,7 +79,19 @@ so grants survive rebuilds). Icon: `swift scripts/make-icon.swift` → build/ico
 mailflow.db (SQLite WAL) · oauth-clients.json (work=Internal app, personal=External/Testing —
 personal refresh token expires ~weekly → Reconnect button) · tokens/*.enc (safeStorage; tied to
 build identity — dev vs packaged can't read each other's) · hubspot.json (Service Key) ·
-signatures.json · attachments/ cache. Keymap + navCollapsed in renderer localStorage.
+signatures.json · bridge.json (iPhone pairing key + port 8484) · attachments/ cache.
+Keymap + navCollapsed in renderer localStorage.
+
+## iPhone PWA
+
+Served by the packaged app over the LAN: `http://<mac-ip>:8484/?key=<bridge.json token>`.
+Saved to the home screen from that URL (manifest has NO start_url on purpose — Safari keeps
+the ?key= URL; a home-screen PWA has separate localStorage from Safari, so the key must live
+in the URL). Requires iPhone + Mac on the same network; for remote access both go on
+Tailscale (standalone Tailscale.app installed; bridge binds 0.0.0.0 so the tailnet
+address works with the same ?key= — a home-screen icon is pinned to its URL, so a
+Tailscale-based icon is a separate add). Gmail actions still run on the Mac — the phone is a remote
+control for the same DB/queues, so the Mac (or its runner) must be awake to sync/send.
 
 ## Gotchas
 
@@ -75,3 +101,10 @@ signatures.json · attachments/ cache. Keymap + navCollapsed in renderer localSt
 - Renderer types: window.mailflow declared in src/types.d.ts — keep in lockstep with preload.ts.
 - npm overrides pin google-auth-library (dedup); electron-vite needs vite@7.
 - Gmail attachment ids go stale — attachment:open re-resolves by filename on 404.
+- iOS PWA: `black-translucent` status-bar style sizes the standalone web view SHORT by the
+  status bar → dead letterbox band at the screen bottom no CSS can reach. Use `black`.
+  iOS bakes status-bar style into the icon at Add-to-Home-Screen time — changing it means
+  re-adding the icon. Also: don't trust dvh (mobile heights run off --app-h, set from
+  innerHeight in main.tsx), and any parent/iframe color-scheme mismatch forces an opaque
+  white canvas behind the email iframes (both declare dark). Debug device geometry via the
+  beacon: phones POST /client-metrics → `~/Library/Application Support/MailFlow/client-metrics.jsonl`.

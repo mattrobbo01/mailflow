@@ -36,9 +36,7 @@ function sidecarBinary(): string {
   return join(process.resourcesPath ?? '', 'meetingscribe')
 }
 
-function broadcast(channel: string, payload: unknown) {
-  for (const win of BrowserWindow.getAllWindows()) win.webContents.send(channel, payload)
-}
+import { broadcast } from '../broadcast'
 
 export function isRecording(): boolean {
   return active !== null

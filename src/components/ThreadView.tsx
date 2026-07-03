@@ -104,7 +104,7 @@ export default function ThreadView({ thread, actions, onReplyMessage, onForwardM
   )
 }
 
-function ScheduledCard({ job, onCancel }: { job: { id: number; send_at: number; payload: string }; onCancel: () => void }) {
+export function ScheduledCard({ job, onCancel }: { job: { id: number; send_at: number; payload: string }; onCancel: () => void }) {
   let to = ''
   let body = ''
   try {
@@ -142,7 +142,7 @@ function ScheduledCard({ job, onCancel }: { job: { id: number; send_at: number; 
   )
 }
 
-function MessageCard({
+export function MessageCard({
   message: m, showImages, onReply, onForward
 }: {
   message: Message; showImages: boolean; onReply: (all: boolean) => void; onForward: () => void
@@ -293,9 +293,20 @@ function MessageBody({ message: m, showImages }: { message: Message; showImages:
         style={{ border: 'none', minHeight: 60, background: 'transparent' }}
         onLoad={(e) => {
           const frame = e.currentTarget
-          const h = frame.contentDocument?.documentElement?.scrollHeight
+          const doc = frame.contentDocument
+          if (!doc) return
+          // Fixed-width marketing layouts (600px tables) overflow narrow frames —
+          // scale the whole email down to fit instead of clipping/scrolling.
+          // body.scrollWidth still reports the full content width under the
+          // overflow-x clip; documentElement's does not.
+          const contentW = Math.max(doc.body.scrollWidth, doc.documentElement.scrollWidth)
+          const frameW = frame.clientWidth
+          if (frameW > 0 && contentW > frameW + 1) {
+            ;(doc.body.style as any).zoom = String(frameW / contentW)
+          }
+          const h = doc.documentElement.scrollHeight
           if (h) frame.style.height = `${Math.min(h + 6, 20000)}px`
-          frame.contentDocument?.querySelectorAll('a').forEach((a) => {
+          doc.querySelectorAll('a').forEach((a) => {
             a.setAttribute('target', '_blank')
             a.setAttribute('rel', 'noreferrer noopener')
           })

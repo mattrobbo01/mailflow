@@ -56,3 +56,68 @@ html, body, #root {
 .tip-right[data-tip]:hover::after {
   transform: translateY(-50%) scale(1);
 }
+
+/* ---------- mobile PWA ---------- */
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+/* iOS Safari zooms any focused input under 16px — force it inside the mobile UI. */
+.mobile-root input,
+.mobile-root textarea,
+.mobile-root select {
+  font-size: 16px;
+}
+
+body {
+  overscroll-behavior-y: none; /* the list has its own pull-to-refresh */
+}
+
+/* The document canvas itself must be dark: iOS letterboxing, rubber-banding and
+   translucent browser chrome all show the html background — a light canvas reads
+   as a grey strip at the screen edges. */
+html {
+  background: #1b1e24;
+  color-scheme: dark;
+}
+
+/* Mobile: lock the page to the REAL viewport height. iOS mis-reports dvh in
+   home-screen apps (it reserves toolbar space that doesn't exist), so main.tsx
+   measures window.innerHeight into --app-h on every resize; dvh is only the
+   pre-first-paint fallback. The fixed body kills document-level scroll and
+   rubber-banding entirely — all scrolling happens in inner panes. */
+body.mf-lock {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  height: var(--app-h, 100dvh);
+}
+body.mf-lock #root,
+.mobile-root {
+  height: var(--app-h, 100dvh);
+}
+.mf-screen {
+  height: var(--app-h, 100dvh);
+}
+
+@keyframes mf-slide-in {
+  from { transform: translateX(28px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+@keyframes mf-slide-up {
+  from { transform: translateY(24px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+@keyframes mf-slide-right {
+  from { transform: translateX(-40px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+@keyframes mf-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.mf-slide-in { animation: mf-slide-in 180ms ease-out; }
+.mf-slide-up { animation: mf-slide-up 200ms ease-out; }
+.mf-slide-right { animation: mf-slide-right 180ms ease-out; }
+.mf-fade-in { animation: mf-fade-in 150ms ease-out; }

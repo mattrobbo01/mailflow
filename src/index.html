@@ -2,8 +2,20 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>MailFlow</title>
+    <!-- iPhone home-screen app (served by the LAN bridge; harmless in Electron) -->
+    <meta name="theme-color" content="#16181d" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <!-- Opaque black, NOT black-translucent: translucent triggers the iOS bug where
+         the standalone web view is sized short by the status bar, letterboxing a
+         dead band at the bottom of the screen. iOS bakes this into the icon at
+         Add-to-Home-Screen time, so changing it requires re-adding the icon. -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="black" />
+    <meta name="apple-mobile-web-app-title" content="MailFlow" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
   </head>
   <body class="bg-[#1b1e24] text-zinc-200 antialiased overflow-hidden">
     <div id="root"></div>

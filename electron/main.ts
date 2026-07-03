@@ -2,6 +2,7 @@ import { app, BrowserWindow, nativeImage, shell } from 'electron'
 import { existsSync } from 'fs'
 import { join } from 'path'
 import { registerIpc } from './ipc'
+import { startBridge } from './bridge'
 import { startSyncLoop } from './sync/orchestrator'
 import { startMeetingWatcher } from './calendar/gcal'
 import { runHeadless } from './runner'
@@ -54,6 +55,7 @@ app.whenReady().then(() => {
   }
   setDockIcon()
   registerIpc()
+  startBridge() // iPhone PWA access over the LAN
   createWindow()
   startSyncLoop()
   startMeetingWatcher()
