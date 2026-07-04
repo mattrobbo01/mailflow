@@ -107,6 +107,8 @@ export function installWebBridge() {
     transcriptionIsRecording: () => rpc('transcription:isRecording'),
     transcriptionList: () => rpc('transcription:list'),
     transcriptionGet: (id) => rpc('transcription:get', id),
+    transcriptionDelete: (id) => rpc('transcription:delete', id),
+    transcriptionRename: (id, title) => rpc('transcription:rename', id, title),
     meetingsLive: () => rpc('meetings:live'),
     notifyTest: () => rpc('notify:test'),
     // Attachments open in a new Safari tab straight off the bridge (QuickLook

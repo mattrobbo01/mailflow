@@ -16,7 +16,7 @@ import {
 import { getPersonContext, hubspotStatus, syncHubSpot } from './hubspot/sync'
 import { getInlineImages } from './sync/inline-images'
 import { getSignaturePreview, setSignature, getSignature, importSignatureFromSent } from './sync/signatures'
-import { startRecording, stopRecording, isRecording, listTranscripts, getTranscript } from './transcription/sidecar'
+import { startRecording, stopRecording, isRecording, listTranscripts, getTranscript, deleteTranscript, renameTranscript } from './transcription/sidecar'
 import { liveMeetings } from './calendar/gcal'
 
 /**
@@ -152,6 +152,8 @@ export function buildHandlers(): Record<string, Handler> {
     'transcription:isRecording': () => isRecording(),
     'transcription:list': (query?: string) => listTranscripts(query),
     'transcription:get': (id: number) => getTranscript(id),
+    'transcription:delete': (id: number) => deleteTranscript(id),
+    'transcription:rename': (id: number, title: string) => renameTranscript(id, title),
 
     'shell:reveal': async (path: string) => {
       const { shell } = await import('electron')

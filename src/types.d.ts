@@ -169,6 +169,8 @@ declare global {
       transcriptionIsRecording: () => Promise<boolean>
       transcriptionList: () => Promise<unknown[]>
       transcriptionGet: (id: number) => Promise<unknown>
+      transcriptionDelete: (id: number) => Promise<void>
+      transcriptionRename: (id: number, title: string) => Promise<void>
       meetingsLive: () => Promise<unknown[]>
       notifyTest: () => Promise<boolean>
       attachmentOpen: (account: string, messageId: string, attachmentId: string, filename: string) => Promise<string>

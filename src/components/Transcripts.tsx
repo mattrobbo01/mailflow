@@ -43,7 +43,8 @@ const ipc = () =>
   (window as any).mailflow as {
     transcriptsList: (query?: string) => Promise<TranscriptListItem[]>
     transcriptionGet: (id: number) => Promise<TranscriptDetail>
-    revealPath?: (path: string) => void
+    transcriptionDelete: (id: number) => Promise<void>
+    transcriptionRename: (id: number, title: string) => Promise<void>
   }
 
 const ACCENT = '#35c3d4'
@@ -100,6 +101,7 @@ export default function TranscriptsSection({
   const [items, setItems] = useState<TranscriptListItem[] | null>(null)
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [detail, setDetail] = useState<TranscriptDetail | null>(null)
+  const [listVersion, setListVersion] = useState(0)
 
   // Keep the latest callback without re-triggering data effects.
   const onCounterpartRef = useRef(onCounterpart)
@@ -118,7 +120,7 @@ export default function TranscriptsSection({
       alive = false
       clearTimeout(timer)
     }
-  }, [query])
+  }, [query, listVersion])
 
   // Auto-select the first transcript when the list loads and nothing is selected.
   useEffect(() => {
@@ -138,6 +140,12 @@ export default function TranscriptsSection({
       .transcriptionGet(selectedId)
       .then((d) => {
         if (!alive) return
+        // Row deleted underneath us (or bad id): drop the selection instead of
+        // rendering a detail with transcript === undefined.
+        if (!d?.transcript) {
+          setSelectedId(null)
+          return
+        }
         setDetail(d)
         onCounterpartRef.current(d.attendees[0]?.email ?? null)
       })
@@ -149,6 +157,33 @@ export default function TranscriptsSection({
       alive = false
     }
   }, [selectedId])
+
+  async function deleteSelected() {
+    if (selectedId === null) return
+    const hasVaultNote = Boolean(detail?.transcript.markdown_path)
+    const ok = window.confirm(
+      hasVaultNote
+        ? 'Delete this transcript? Its vault note will be moved to the Trash.'
+        : 'Delete this transcript?'
+    )
+    if (!ok) return
+    await ipc().transcriptionDelete(selectedId)
+    // Drop the item locally and pick a neighbour NOW — the auto-select effect
+    // must never see a stale list that still contains the deleted id.
+    const idx = (items ?? []).findIndex((t) => t.id === selectedId)
+    const remaining = (items ?? []).filter((t) => t.id !== selectedId)
+    const next = remaining[Math.min(Math.max(idx, 0), remaining.length - 1)]
+    setItems(remaining)
+    setSelectedId(next ? next.id : null)
+    setListVersion((v) => v + 1)
+  }
+
+  async function renameSelected(title: string) {
+    if (selectedId === null) return
+    await ipc().transcriptionRename(selectedId, title)
+    setDetail((d) => (d ? { ...d, transcript: { ...d.transcript, title } } : d))
+    setListVersion((v) => v + 1)
+  }
 
   return (
     <div className="flex h-full w-full min-w-0 flex-1">
@@ -218,15 +253,41 @@ export default function TranscriptsSection({
         ) : detail === null ? (
           <div className="flex h-full items-center justify-center text-sm text-zinc-600">Loading…</div>
         ) : (
-          <TranscriptDetailView detail={detail} />
+          <TranscriptDetailView
+            key={detail.transcript.id}
+            detail={detail}
+            onRename={renameSelected}
+            onDelete={deleteSelected}
+          />
         )}
       </div>
     </div>
   )
 }
 
-function TranscriptDetailView({ detail }: { detail: TranscriptDetail }) {
+function TranscriptDetailView({
+  detail,
+  onRename,
+  onDelete
+}: {
+  detail: TranscriptDetail
+  onRename: (title: string) => void
+  onDelete: () => void
+}) {
   const { transcript, segments, attendees } = detail
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState('')
+
+  function startEdit() {
+    setDraft(transcript.title || '')
+    setEditing(true)
+  }
+
+  function commitEdit() {
+    setEditing(false)
+    const next = draft.trim()
+    if (next && next !== (transcript.title || '')) onRename(next)
+  }
 
   // Group consecutive segments by the same speaker under one name label.
   const groups = useMemo(() => {
@@ -243,20 +304,54 @@ function TranscriptDetailView({ detail }: { detail: TranscriptDetail }) {
   return (
     <div className="flex h-full flex-col">
       <header className="flex h-11 shrink-0 items-center gap-3 border-b border-white/8 px-4">
-        <h1 className="min-w-0 flex-1 truncate text-[14px] font-semibold text-zinc-100">
-          {transcript.title || '(untitled meeting)'}
-        </h1>
+        {editing ? (
+          <input
+            autoFocus
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={commitEdit}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') commitEdit()
+              if (e.key === 'Escape') setEditing(false)
+            }}
+            placeholder="Meeting title"
+            className="min-w-0 flex-1 rounded bg-white/8 px-1.5 py-0.5 text-[14px] font-semibold text-zinc-100 outline-none placeholder:text-zinc-600"
+          />
+        ) : (
+          <h1
+            onDoubleClick={startEdit}
+            className="min-w-0 flex-1 truncate text-[14px] font-semibold text-zinc-100"
+          >
+            {transcript.title || '(untitled meeting)'}
+          </h1>
+        )}
+        {!editing && (
+          <button
+            onClick={startEdit}
+            data-tip="Rename meeting"
+            className="shrink-0 rounded-md p-1 text-zinc-500 hover:bg-white/8 hover:text-zinc-200"
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+            </svg>
+          </button>
+        )}
         <span className="shrink-0 text-[12px] tabular-nums text-zinc-500">
           {timeRange(transcript.started_at, transcript.ended_at)}
         </span>
-        {transcript.markdown_path && (
-          <button
-            onClick={() => ipc().revealPath?.(transcript.markdown_path!)}
-            className="shrink-0 text-[12px] text-[#35c3d4] hover:underline"
-          >
-            Open in vault
-          </button>
-        )}
+        <button
+          onClick={onDelete}
+          data-tip="Delete transcript"
+          className="shrink-0 rounded-md p-1 text-zinc-500 hover:bg-white/8 hover:text-[#e0705a]"
+        >
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M3 6h18" />
+            <path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2" />
+            <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+            <line x1="10" y1="11" x2="10" y2="17" />
+            <line x1="14" y1="11" x2="14" y2="17" />
+          </svg>
+        </button>
       </header>
 
       <div className="flex-1 overflow-y-auto px-6 py-4">

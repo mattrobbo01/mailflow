@@ -1,8 +1,8 @@
 import { spawn, ChildProcess } from 'child_process'
 import { createInterface } from 'readline'
-import { existsSync } from 'fs'
-import { join } from 'path'
-import { app, BrowserWindow } from 'electron'
+import { existsSync, readFileSync, writeFileSync, unlinkSync } from 'fs'
+import { join, dirname } from 'path'
+import { app, shell, BrowserWindow } from 'electron'
 import { getDb } from '../db/db'
 import { exportTranscriptToVault } from './robbo2-export'
 
@@ -180,6 +180,56 @@ export function listTranscripts(query?: string, limit = 100) {
        ORDER BY t.started_at DESC LIMIT @limit`
     )
     .all(params)
+}
+
+export async function deleteTranscript(id: number): Promise<void> {
+  const db = getDb()
+  const t = db.prepare(`SELECT markdown_path FROM transcripts WHERE id = ?`).get(id) as
+    | { markdown_path: string | null }
+    | undefined
+  if (!t) return
+  // Vault note goes to the macOS Trash, not unlink — it may hold enrichment
+  // sections added by the daily-ingestion task, so keep it recoverable.
+  if (t.markdown_path && existsSync(t.markdown_path)) {
+    await shell.trashItem(t.markdown_path).catch((e) => {
+      console.error('[transcripts] failed to trash vault note', e)
+    })
+  }
+  db.prepare(`DELETE FROM transcript_segments WHERE transcript_id = ?`).run(id)
+  db.prepare(`DELETE FROM transcript_attendees WHERE transcript_id = ?`).run(id)
+  db.prepare(`DELETE FROM transcripts WHERE id = ?`).run(id)
+}
+
+export function renameTranscript(id: number, title: string): void {
+  const trimmed = title.trim()
+  if (!trimmed) return
+  const db = getDb()
+  const t = db.prepare(`SELECT * FROM transcripts WHERE id = ?`).get(id) as any
+  if (!t) return
+  db.prepare(`UPDATE transcripts SET title = ? WHERE id = ?`).run(trimmed, id)
+
+  // Rename the vault note in place (filename + `meeting:` frontmatter + heading)
+  // rather than re-exporting, which would wipe enrichment sections.
+  if (!t.markdown_path || !existsSync(t.markdown_path)) return
+  try {
+    const oldTitle = t.title ?? 'Meeting'
+    let md = readFileSync(t.markdown_path, 'utf8')
+    md = md.replace(`meeting: ${oldTitle}`, `meeting: ${trimmed}`)
+    md = md.replace(`— ${oldTitle}`, `— ${trimmed}`)
+
+    const dateStr = new Date((t.started_at ?? Date.now() / 1000) * 1000).toISOString().slice(0, 10)
+    const safe = trimmed.replace(/[/\\:]/g, '-')
+    const dir = dirname(t.markdown_path)
+    let newPath = join(dir, `${dateStr} - ${safe}.md`)
+    if (newPath !== t.markdown_path && existsSync(newPath)) {
+      newPath = join(dir, `${dateStr} - ${safe} (${id}).md`)
+    }
+    writeFileSync(newPath, md, 'utf8')
+    if (newPath !== t.markdown_path) unlinkSync(t.markdown_path)
+    db.prepare(`UPDATE transcripts SET markdown_path = ? WHERE id = ?`).run(newPath, id)
+  } catch (e) {
+    console.error('[transcripts] failed to rename vault note', e)
+  }
 }
 
 export function getTranscript(id: number) {
