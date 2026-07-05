@@ -161,6 +161,22 @@ export async function findOwnerId(email: string): Promise<string | null> {
   return id != null ? String(id) : null
 }
 
+/**
+ * Create a contact. ONLY ever called from an explicit user action (the
+ * "Add to HubSpot" buttons) — the insights pipeline never creates contacts.
+ */
+export async function createContact(email: string, name?: string | null): Promise<string> {
+  const parts = (name ?? '').trim().split(/\s+/).filter(Boolean)
+  const properties: Record<string, string> = { email }
+  if (parts[0]) properties.firstname = parts[0]
+  if (parts.length > 1) properties.lastname = parts.slice(1).join(' ')
+  const payload = await hsFetch('/crm/v3/objects/contacts', {
+    method: 'POST',
+    body: JSON.stringify({ properties })
+  })
+  return String(payload.id)
+}
+
 const NOTE_TO_CONTACT = 202 // HubSpot-defined association type ids
 const TASK_TO_CONTACT = 204
 

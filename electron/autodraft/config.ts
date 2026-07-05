@@ -21,6 +21,10 @@ export interface AutodraftConfig {
   maxJobsPerHour: number
   triageTimeoutMs: number
   draftTimeoutMs: number
+  /** Company domains: attendees here are colleagues — never pushed to HubSpot. */
+  internalDomains: string[]
+  /** Vault note injected into meeting analysis — Matt's evolving coaching lens. */
+  coachingProfilePath: string
 }
 
 function defaults(): AutodraftConfig {
@@ -34,7 +38,9 @@ function defaults(): AutodraftConfig {
     vaultPath: join(home, 'Projects', 'Robbo2'),
     maxJobsPerHour: 12,
     triageTimeoutMs: 90_000,
-    draftTimeoutMs: 300_000
+    draftTimeoutMs: 300_000,
+    internalDomains: ['usehabits.com'],
+    coachingProfilePath: join(home, 'Projects', 'Robbo2', 'Projects', 'MailFlow', 'coaching-profile.md')
   }
 }
 

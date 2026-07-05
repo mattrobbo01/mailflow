@@ -155,6 +155,8 @@ export default function PeopleSidebar({ email, name, onOpenThread }: Props) {
   const [ctx, setCtx] = useState<PersonContext | null>(null)
   const [status, setStatus] = useState<HubSpotStatus | null>(null)
   const [loading, setLoading] = useState(false)
+  const [adding, setAdding] = useState(false)
+  const [addError, setAddError] = useState<string | null>(null)
 
   useEffect(() => {
     window.mailflow.hubspotStatus().then(setStatus).catch(() => {})
@@ -228,6 +230,29 @@ export default function PeopleSidebar({ email, name, onOpenThread }: Props) {
           )}
         </div>
         <div className="truncate text-[12px] text-zinc-500" title={email}>{email}</div>
+        {!hubspotId && status?.configured && (
+          <div className="mt-1.5">
+            <button
+              onClick={async () => {
+                setAdding(true)
+                setAddError(null)
+                try {
+                  await window.mailflow.hubspotCreateContact(email, displayName)
+                  setCtx(await window.mailflow.personForEmail(email))
+                } catch (e: any) {
+                  setAddError(e.message)
+                } finally {
+                  setAdding(false)
+                }
+              }}
+              disabled={adding}
+              className="rounded-md bg-[#35c3d4]/15 px-2 py-1 text-[11.5px] font-medium text-[#35c3d4] hover:bg-[#35c3d4]/25 disabled:opacity-50"
+            >
+              {adding ? 'Adding…' : '+ Add to HubSpot'}
+            </button>
+            {addError && <div className="mt-1 text-[11px] text-red-400">{addError}</div>}
+          </div>
+        )}
         {(role || company) && (
           <div className="mt-0.5 truncate text-[12px] text-zinc-400">
             {role}{role && company ? ' @ ' : ''}{company}

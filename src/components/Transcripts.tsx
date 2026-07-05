@@ -408,6 +408,7 @@ function TranscriptDetailView({
           transcriptId={transcript.id}
           insights={insights}
           hasSegments={segments.length > 0}
+          attendees={attendees}
         />
       )}
 
@@ -510,17 +511,57 @@ interface InsightTaskView {
   hubspotTaskId?: string
 }
 
+// Colleagues are never HubSpot targets — mirror of the main-process rule
+// (internalDomains in autodraft.json; see App.tsx account detection precedent).
+const INTERNAL_DOMAINS = ['usehabits.com']
+
 function InsightsPane({
-  kind, transcriptId, insights, hasSegments
+  kind, transcriptId, insights, hasSegments, attendees
 }: {
   kind: 'coaching' | 'summary'
   transcriptId: number
   insights: TranscriptInsights | null
   hasSegments: boolean
+  attendees: TranscriptAttendee[]
 }) {
   const [busy, setBusy] = useState(false)
+  const [missing, setMissing] = useState<TranscriptAttendee[]>([])
   const analysing = insights?.state === 'running' || insights?.state === 'pending'
   const content = kind === 'coaching' ? insights?.coaching : insights?.summary
+  const isInternal = insights?.hubspot_error?.startsWith('Internal meeting') ?? false
+  const noContacts = insights?.hubspot_error?.includes('no matching HubSpot contacts') ?? false
+
+  // When the push skipped for lack of contacts, find which externals to offer.
+  useEffect(() => {
+    if (kind !== 'summary' || !noContacts) {
+      setMissing([])
+      return
+    }
+    let alive = true
+    const externals = attendees.filter(
+      (a) => a.email && !INTERNAL_DOMAINS.includes(a.email.split('@')[1] ?? '')
+    )
+    Promise.all(
+      externals.map(async (a) => {
+        const ctx = await window.mailflow.personForEmail(a.email).catch(() => null)
+        return ctx?.hsContact || ctx?.person?.hubspot_id ? null : a
+      })
+    ).then((rows) => alive && setMissing(rows.filter((r): r is TranscriptAttendee => r !== null)))
+    return () => {
+      alive = false
+    }
+  }, [kind, noContacts, attendees])
+
+  const addAndPush = async (a: TranscriptAttendee) => {
+    setBusy(true)
+    try {
+      await window.mailflow.hubspotCreateContact(a.email, a.name ?? undefined)
+      setMissing((prev) => prev.filter((m) => m.email !== a.email))
+      await window.mailflow.transcriptInsightsRepush(transcriptId)
+    } finally {
+      setBusy(false)
+    }
+  }
 
   const generate = async () => {
     setBusy(true)
@@ -579,13 +620,17 @@ function InsightsPane({
       {content && kind === 'summary' && (
         <>
           <div className="mb-3 flex items-center gap-2 rounded-md border border-white/8 bg-white/4 px-3 py-1.5 text-[11.5px]">
-            {insights?.hubspot_pushed_at ? (
+            {isInternal ? (
+              <span className="text-zinc-400">Internal meeting — kept local, nothing pushed to HubSpot</span>
+            ) : insights?.hubspot_pushed_at ? (
               <span className="text-emerald-400">✓ Pushed to HubSpot {formatTs(insights.hubspot_pushed_at)}</span>
             ) : (
               <span className="text-amber-300">Not in HubSpot yet</span>
             )}
-            {insights?.hubspot_error && <span className="text-red-400">— {insights.hubspot_error}</span>}
-            {(insights?.hubspot_error || !insights?.hubspot_pushed_at) && (
+            {!isInternal && insights?.hubspot_error && (
+              <span className="text-red-400">— {insights.hubspot_error}</span>
+            )}
+            {!isInternal && (insights?.hubspot_error || !insights?.hubspot_pushed_at) && (
               <button
                 onClick={async () => {
                   setBusy(true)
@@ -598,6 +643,25 @@ function InsightsPane({
               </button>
             )}
           </div>
+          {missing.length > 0 && (
+            <div className="mb-3 rounded-md border border-amber-400/20 bg-amber-400/5 px-3 py-2 text-[12px] text-zinc-300">
+              <div className="mb-1.5 text-amber-300">
+                Not in HubSpot — contacts are only ever created when you ask:
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {missing.map((a) => (
+                  <button
+                    key={a.email}
+                    onClick={() => addAndPush(a)}
+                    disabled={busy}
+                    className="rounded-md bg-[#35c3d4]/15 px-2 py-1 text-[11.5px] font-medium text-[#35c3d4] hover:bg-[#35c3d4]/25 disabled:opacity-50"
+                  >
+                    + Add {a.name || a.email} &amp; push
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           <MarkdownLite text={content} />
           {tasks.length > 0 && (
             <div className="mt-5">

@@ -42,6 +42,7 @@ const api = {
   signatureImport: (account: string) => ipcRenderer.invoke('signature:import', account),
   signatureSet: (account: string, html: string) => ipcRenderer.invoke('signature:set', account, html),
   hubspotStatus: () => ipcRenderer.invoke('hubspot:status'),
+  hubspotCreateContact: (email: string, name?: string) => ipcRenderer.invoke('hubspot:createContact', email, name),
   paletteUsed: (id: string) => ipcRenderer.invoke('palette:used', id),
   paletteFrecency: () => ipcRenderer.invoke('palette:frecency'),
   transcriptionStart: (title: string, attendees: string[], eventId?: string) =>

@@ -103,6 +103,7 @@ export function installWebBridge() {
     signatureImport: (account) => rpc('signature:import', account),
     signatureSet: (account, html) => rpc('signature:set', account, html),
     hubspotStatus: () => rpc('hubspot:status'),
+    hubspotCreateContact: (email, name) => rpc('hubspot:createContact', email, name),
     paletteUsed: (id) => rpc('palette:used', id),
     paletteFrecency: () => rpc('palette:frecency'),
     transcriptionStart: (title, attendees, eventId) => rpc('transcription:start', title, attendees, eventId),

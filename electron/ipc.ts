@@ -146,6 +146,24 @@ export function buildHandlers(): Record<string, Handler> {
       return hubspotStatus()
     },
     'hubspot:status': () => hubspotStatus(),
+    'hubspot:createContact': async (email: string, name?: string) => {
+      const { createContact } = await import('./hubspot/api')
+      const lower = email.trim().toLowerCase()
+      const id = await createContact(lower, name)
+      // Mirror locally so the sidebar/insights see the contact immediately.
+      const db = getDb()
+      const parts = (name ?? '').trim().split(/\s+/).filter(Boolean)
+      db.prepare(
+        `INSERT INTO hs_contacts (hubspot_id, email, properties, updated_at) VALUES (?, ?, ?, unixepoch())
+         ON CONFLICT(hubspot_id) DO UPDATE SET email = excluded.email, updated_at = excluded.updated_at`
+      ).run(id, lower, JSON.stringify({ email: lower, firstname: parts[0] ?? null, lastname: parts.slice(1).join(' ') || null }))
+      db.prepare(
+        `INSERT INTO people (email, name, hubspot_id) VALUES (?, ?, ?)
+         ON CONFLICT(email) DO UPDATE SET hubspot_id = excluded.hubspot_id,
+           name = COALESCE(NULLIF(people.name, ''), excluded.name)`
+      ).run(lower, name?.trim() || null, id)
+      return id
+    },
 
     // ---- transcription ----
     'transcription:start': async (title: string, attendees: string[], eventId?: string) => {

@@ -1,6 +1,17 @@
 import { app, BrowserWindow, nativeImage, shell } from 'electron'
-import { existsSync } from 'fs'
+import { appendFileSync, existsSync } from 'fs'
 import { join } from 'path'
+
+// Boot-stage tracer: packaged apps have no visible stdout, so when startup
+// wedges silently this file is the only witness. Cheap enough to keep.
+function bootLog(stage: string) {
+  try {
+    appendFileSync('/tmp/mailflow-boot.log', `${new Date().toISOString()} [${process.pid}] ${stage}\n`)
+  } catch {
+    /* diagnostics must never break boot */
+  }
+}
+bootLog('main.js loaded')
 import { registerIpc } from './ipc'
 import { startBridge } from './bridge'
 import { startSyncLoop } from './sync/orchestrator'
@@ -49,16 +60,22 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  bootLog(`whenReady (runner=${isRunner})`)
   if (isRunner) {
     runHeadless()
     return
   }
   setDockIcon()
   registerIpc()
+  bootLog('ipc registered')
   startBridge() // iPhone PWA access over the LAN
+  bootLog('bridge starting')
   createWindow()
+  bootLog('window created')
   startSyncLoop()
+  bootLog('sync loop started')
   startMeetingWatcher()
+  bootLog('startup complete')
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()

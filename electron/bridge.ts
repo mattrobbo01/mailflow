@@ -1,6 +1,12 @@
 import { createServer, IncomingMessage, ServerResponse } from 'http'
 import { randomBytes, timingSafeEqual } from 'crypto'
-import { existsSync, readFileSync } from 'fs'
+import { appendFileSync, existsSync, readFileSync } from 'fs'
+
+function bridgeLog(msg: string) {
+  try {
+    appendFileSync('/tmp/mailflow-boot.log', `${new Date().toISOString()} [bridge] ${msg}\n`)
+  } catch { /* diagnostics only */ }
+}
 import { networkInterfaces } from 'os'
 import { join, normalize, extname } from 'path'
 import { getHandlers, fetchAttachmentToCache } from './ipc'
@@ -112,6 +118,17 @@ export function getBridgeInfo() {
 export function startBridge() {
   const config = loadConfig()
   const staticRoot = join(__dirname, '../renderer')
+
+  // Diagnostic probe: loopback binds are never privacy-gated on macOS; if this
+  // succeeds while the 0.0.0.0 listen below black-holes, the app is missing
+  // the Local Network permission (TCC), not suffering a code bug.
+  const probe = createServer()
+  probe.on('listening', () => {
+    bridgeLog('loopback probe OK (127.0.0.1)')
+    probe.close()
+  })
+  probe.on('error', (e: any) => bridgeLog(`loopback probe error: ${e?.message ?? e}`))
+  probe.listen(0, '127.0.0.1')
 
   const server = createServer(async (req, res) => {
     try {
@@ -241,6 +258,7 @@ export function startBridge() {
   // keep retrying instead of silently losing the bridge until the next launch.
   let attempts = 0
   server.on('error', (e: any) => {
+    bridgeLog(`error: ${e?.code ?? ''} ${e?.message ?? e} (attempt ${attempts})`)
     if (e?.code === 'EADDRINUSE' && attempts < 20) {
       attempts += 1
       setTimeout(() => server.listen(config.port, '0.0.0.0'), 3000)
@@ -251,6 +269,7 @@ export function startBridge() {
   })
 
   server.on('listening', () => {
+    bridgeLog(`listening on :${config.port}`)
     bridgeInfo = { port: config.port, token: config.token }
     const urls = lanAddresses().map((a) => `http://${a}:${config.port}/?key=${config.token}`)
     console.log(`[bridge] listening on :${config.port}\n${urls.map((u) => `[bridge]   ${u}`).join('\n')}`)

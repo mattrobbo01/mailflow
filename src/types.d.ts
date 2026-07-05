@@ -188,6 +188,7 @@ declare global {
       signatureImport: (account: string) => Promise<{ html: string } | null>
       signatureSet: (account: string, html: string) => Promise<{ html: string } | null>
       hubspotStatus: () => Promise<HubSpotStatus>
+      hubspotCreateContact: (email: string, name?: string) => Promise<string>
       paletteUsed: (id: string) => Promise<void>
       paletteFrecency: () => Promise<Record<string, number>>
       onSyncUpdated: (cb: (p: { account: string }) => void) => () => void

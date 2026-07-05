@@ -1,6 +1,7 @@
+import { existsSync, readFileSync } from 'fs'
 import { getDb } from '../db/db'
 import { broadcast } from '../broadcast'
-import { loadAutodraftConfig } from '../autodraft/config'
+import { AutodraftConfig, loadAutodraftConfig } from '../autodraft/config'
 import { getEngine } from '../autodraft/engine'
 import { createNote, createTask, findOwnerId, isConfigured } from '../hubspot/api'
 
@@ -36,6 +37,7 @@ export interface InsightsRow {
 
 const OWNER_KEY = 'hubspot:ownerId'
 const MAX_TRANSCRIPT_CHARS = 30_000
+export const INTERNAL_MARK = 'Internal meeting — kept local'
 
 function notify(transcriptId: number, state: string) {
   try {
@@ -60,7 +62,10 @@ function upsertState(transcriptId: number, state: string, fields: Partial<Record
 
 // ---------- prompt ----------
 
-function buildInsightsPrompt(transcriptId: number): { prompt: string; externalEmails: string[] } | null {
+function buildInsightsPrompt(
+  transcriptId: number,
+  cfg: AutodraftConfig
+): { prompt: string; externalEmails: string[] } | null {
   const db = getDb()
   const t = db
     .prepare(`SELECT id, title, started_at FROM transcripts WHERE id = ?`)
@@ -88,7 +93,16 @@ function buildInsightsPrompt(transcriptId: number): { prompt: string; externalEm
   const selfEmails = new Set(
     (db.prepare(`SELECT lower(id) AS id FROM accounts`).all() as { id: string }[]).map((r) => r.id)
   )
-  const external = attendees.filter((a) => a.email && !selfEmails.has(a.email.toLowerCase()))
+  // Colleagues (internal domains) are context for the analysis but NEVER
+  // HubSpot targets — only genuine externals count.
+  const isInternal = (email: string) => {
+    const lower = email.toLowerCase()
+    if (selfEmails.has(lower)) return true
+    const domain = lower.split('@')[1] ?? ''
+    return cfg.internalDomains.some((d) => domain === d.toLowerCase())
+  }
+  const external = attendees.filter((a) => a.email && !isInternal(a.email))
+  const colleagues = attendees.filter((a) => a.email && !selfEmails.has(a.email.toLowerCase()) && isInternal(a.email))
 
   let transcript = segments
     .map((s) => `${s.speaker || (s.channel === 'mic' ? 'Matt' : 'Speaker')}: ${s.text}`)
@@ -116,11 +130,26 @@ function buildInsightsPrompt(transcriptId: number): { prompt: string; externalEm
 
   const when = t.started_at ? new Date(t.started_at * 1000).toISOString().slice(0, 10) : 'unknown date'
 
+  // Matt's evolving coaching lens: a vault note he edits as his focus shifts,
+  // so the feedback grows with him instead of going stale.
+  let coachingFocus = ''
+  try {
+    if (existsSync(cfg.coachingProfilePath)) {
+      coachingFocus = readFileSync(cfg.coachingProfilePath, 'utf8').slice(0, 4000)
+    }
+  } catch {
+    /* profile optional */
+  }
+
+  const colleagueBlock = colleagues.length
+    ? `\nHabits colleagues also on the call: ${colleagues.map((a) => a.name || a.email).join(', ')}`
+    : ''
+
   const prompt = `You are analysing a recorded meeting for Matt Robertson (co-founder at Habits, a fintech advisor-consumer platform). Matt ran this call. Your current directory is Matt's Obsidian vault — search it (Grep/Glob, then Read) for notes on the attendees/companies below for context before writing. Read at most ~6 files.
 
 Meeting: "${t.title ?? 'Meeting'}" on ${when}
 External attendees:
-${attendeeBlock}
+${attendeeBlock}${colleagueBlock}${coachingFocus ? `\n\n# Matt's current coaching focus (from his coaching profile — weight the coaching feedback toward these, and explicitly say how he did on each)\n${coachingFocus}` : ''}
 
 Transcript (speaker-labelled):
 ${transcript}
@@ -203,6 +232,11 @@ async function pushToHubSpot(
   externalEmails: string[]
 ): Promise<void> {
   const db = getDb()
+  if (externalEmails.length === 0) {
+    // Internal call: coaching/summary stay in MailFlow; nothing touches the CRM.
+    upsertState(transcriptId, 'done', { hubspot_error: INTERNAL_MARK })
+    return
+  }
   if (!isConfigured()) {
     upsertState(transcriptId, 'done', { hubspot_error: 'HubSpot not configured' })
     return
@@ -263,14 +297,14 @@ export async function generateInsights(transcriptId: number): Promise<void> {
   if (inFlight.has(transcriptId)) return
   inFlight.add(transcriptId)
   try {
-    const built = buildInsightsPrompt(transcriptId)
+    const cfg = loadAutodraftConfig()
+    const built = buildInsightsPrompt(transcriptId, cfg)
     if (!built) return
     upsertState(transcriptId, 'running', {
       last_error: null
     })
     getDb().prepare(`UPDATE transcript_insights SET attempts = attempts + 1 WHERE transcript_id = ?`).run(transcriptId)
 
-    const cfg = loadAutodraftConfig()
     const engine = getEngine(cfg)
     const parsed = parseInsights(await engine.draft(built.prompt))
 
@@ -293,7 +327,7 @@ export async function generateInsights(transcriptId: number): Promise<void> {
 export async function repushInsights(transcriptId: number): Promise<void> {
   const row = getInsights(transcriptId)
   if (!row?.summary) return generateInsights(transcriptId)
-  const built = buildInsightsPrompt(transcriptId)
+  const built = buildInsightsPrompt(transcriptId, loadAutodraftConfig())
   await pushToHubSpot(
     transcriptId,
     row.summary,
