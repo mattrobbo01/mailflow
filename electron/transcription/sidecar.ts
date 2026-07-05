@@ -159,6 +159,12 @@ function finalize(error: string | null) {
   let path: string | null = null
   if (hasSegments) path = exportTranscriptToVault(transcriptId)
   broadcast('transcription:finished', { transcriptId, error, exportedTo: path })
+  // Kick the post-meeting analysis (coaching + summary + HubSpot note/tasks).
+  if (hasSegments && !error) {
+    import('./insights')
+      .then(({ generateInsights }) => generateInsights(transcriptId))
+      .catch((e) => console.error('[insights]', e?.message ?? e))
+  }
 }
 
 export function listTranscripts(query?: string, limit = 100) {
@@ -197,6 +203,8 @@ export async function deleteTranscript(id: number): Promise<void> {
   }
   db.prepare(`DELETE FROM transcript_segments WHERE transcript_id = ?`).run(id)
   db.prepare(`DELETE FROM transcript_attendees WHERE transcript_id = ?`).run(id)
+  // Insights reference transcripts(id) — must go first or the FK blocks the delete.
+  db.prepare(`DELETE FROM transcript_insights WHERE transcript_id = ?`).run(id)
   db.prepare(`DELETE FROM transcripts WHERE id = ?`).run(id)
 }
 

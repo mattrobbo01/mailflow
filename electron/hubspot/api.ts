@@ -152,6 +152,63 @@ export async function dealContactAssociations(dealIds: string[]): Promise<Map<st
   return map
 }
 
+// ---------- write side (meeting insights → CRM) ----------
+
+/** Owner record for task assignment. */
+export async function findOwnerId(email: string): Promise<string | null> {
+  const payload = await hsFetch(`/crm/v3/owners?email=${encodeURIComponent(email)}`)
+  const id = payload?.results?.[0]?.id
+  return id != null ? String(id) : null
+}
+
+const NOTE_TO_CONTACT = 202 // HubSpot-defined association type ids
+const TASK_TO_CONTACT = 204
+
+function contactAssociations(contactIds: string[], typeId: number) {
+  return contactIds.map((id) => ({
+    to: { id },
+    types: [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: typeId }]
+  }))
+}
+
+/** Create a note engagement associated with the given contacts. Returns note id. */
+export async function createNote(bodyHtml: string, contactIds: string[], timestampMs: number): Promise<string> {
+  const payload = await hsFetch('/crm/v3/objects/notes', {
+    method: 'POST',
+    body: JSON.stringify({
+      properties: { hs_note_body: bodyHtml.slice(0, 65000), hs_timestamp: String(timestampMs) },
+      associations: contactAssociations(contactIds, NOTE_TO_CONTACT)
+    })
+  })
+  return String(payload.id)
+}
+
+/** Create a task associated with the given contacts. Returns task id. */
+export async function createTask(input: {
+  subject: string
+  body: string
+  dueMs: number
+  contactIds: string[]
+  ownerId: string | null
+}): Promise<string> {
+  const properties: Record<string, string> = {
+    hs_task_subject: input.subject.slice(0, 250),
+    hs_task_body: input.body.slice(0, 5000),
+    hs_timestamp: String(input.dueMs),
+    hs_task_status: 'NOT_STARTED',
+    hs_task_type: 'TODO'
+  }
+  if (input.ownerId) properties.hubspot_owner_id = input.ownerId
+  const payload = await hsFetch('/crm/v3/objects/tasks', {
+    method: 'POST',
+    body: JSON.stringify({
+      properties,
+      associations: contactAssociations(input.contactIds, TASK_TO_CONTACT)
+    })
+  })
+  return String(payload.id)
+}
+
 export interface HsNoteResult {
   id: string
   body: string | null

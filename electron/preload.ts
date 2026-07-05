@@ -53,6 +53,14 @@ const api = {
   transcriptionGet: (id: number) => ipcRenderer.invoke('transcription:get', id),
   transcriptionDelete: (id: number) => ipcRenderer.invoke('transcription:delete', id),
   transcriptionRename: (id: number, title: string) => ipcRenderer.invoke('transcription:rename', id, title),
+  transcriptInsights: (id: number) => ipcRenderer.invoke('transcript:insights', id),
+  transcriptInsightsGenerate: (id: number) => ipcRenderer.invoke('transcript:insightsGenerate', id),
+  transcriptInsightsRepush: (id: number) => ipcRenderer.invoke('transcript:insightsRepush', id),
+  onTranscriptInsights: (cb: (p: { transcriptId: number; state: string }) => void) => {
+    const listener = (_: unknown, p: any) => cb(p)
+    ipcRenderer.on('transcript:insights-updated', listener)
+    return () => ipcRenderer.removeListener('transcript:insights-updated', listener)
+  },
   revealPath: (path: string) => ipcRenderer.invoke('shell:reveal', path),
   // Recording-pill window only: manual drag (fire-and-forget for smoothness).
   pillMoveBy: (dx: number, dy: number) => ipcRenderer.send('pill:moveBy', dx, dy),

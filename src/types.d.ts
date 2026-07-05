@@ -111,6 +111,19 @@ export interface AutodraftStatus {
   createdAt: number
 }
 
+export interface TranscriptInsights {
+  transcript_id: number
+  state: 'pending' | 'running' | 'done' | 'failed'
+  coaching: string | null
+  summary: string | null
+  tasks_json: string
+  hubspot_note_id: string | null
+  hubspot_pushed_at: number | null
+  hubspot_error: string | null
+  last_error: string | null
+  updated_at: number
+}
+
 export interface CategoryGroup {
   category: 'notifications' | 'newsletters'
   total: number
@@ -185,6 +198,10 @@ declare global {
       transcriptionGet: (id: number) => Promise<unknown>
       transcriptionDelete: (id: number) => Promise<void>
       transcriptionRename: (id: number, title: string) => Promise<void>
+      transcriptInsights: (id: number) => Promise<TranscriptInsights | null>
+      transcriptInsightsGenerate: (id: number) => Promise<boolean>
+      transcriptInsightsRepush: (id: number) => Promise<TranscriptInsights | null>
+      onTranscriptInsights: (cb: (p: { transcriptId: number; state: string }) => void) => () => void
       meetingsLive: () => Promise<unknown[]>
       notifyTest: () => Promise<boolean>
       pillMoveBy: (dx: number, dy: number) => void

@@ -99,6 +99,22 @@ function migrate(d: Database.Database) {
     /* column exists */
   }
 
+  // Meeting insights: AI-generated per-transcript analysis. coaching is LOCAL
+  // ONLY (never leaves this Mac); summary + tasks are pushed to HubSpot.
+  d.exec(`CREATE TABLE IF NOT EXISTS transcript_insights (
+    transcript_id INTEGER PRIMARY KEY REFERENCES transcripts(id),
+    state TEXT DEFAULT 'pending',    -- pending | running | done | failed
+    coaching TEXT,
+    summary TEXT,
+    tasks_json TEXT DEFAULT '[]',    -- [{title, details, dueInDays, contactEmail, hubspotTaskId?}]
+    hubspot_note_id TEXT,
+    hubspot_pushed_at INTEGER,
+    hubspot_error TEXT,
+    attempts INTEGER DEFAULT 0,
+    last_error TEXT,
+    updated_at INTEGER DEFAULT (unixepoch())
+  )`)
+
   // One-time cleanup: snippets stored before entity decoding was added.
   const decoded = d.prepare(`SELECT value FROM meta WHERE key = 'snippets:decoded'`).get()
   if (!decoded) {

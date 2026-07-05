@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { formatTs, initials, avatarColor } from '../lib/format'
+import type { TranscriptInsights } from '../types.d'
 
 // Local IPC types — handlers are provided by the main process; types.d.ts is not extended on purpose.
 interface TranscriptListItem {
@@ -283,6 +284,21 @@ function TranscriptDetailView({
   const { transcript, segments, attendees } = detail
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState('')
+  const [tab, setTab] = useState<'transcript' | 'coaching' | 'summary'>('transcript')
+  const [insights, setInsights] = useState<TranscriptInsights | null>(null)
+
+  const loadInsights = useCallback(() => {
+    window.mailflow.transcriptInsights(transcript.id).then(setInsights).catch(() => {})
+  }, [transcript.id])
+
+  useEffect(() => {
+    loadInsights()
+    return window.mailflow.onTranscriptInsights((p) => {
+      if (p.transcriptId === transcript.id) loadInsights()
+    })
+  }, [transcript.id, loadInsights])
+
+  const analysing = insights?.state === 'running' || insights?.state === 'pending'
 
   function startEdit() {
     setDraft(transcript.title || '')
@@ -360,7 +376,42 @@ function TranscriptDetailView({
         </button>
       </header>
 
-      <div className="flex-1 overflow-y-auto px-6 py-4">
+      {/* Tabs: raw transcript · private coaching · CRM-facing summary & tasks */}
+      <div className="flex shrink-0 items-center gap-1 border-b border-white/8 px-4">
+        {(
+          [
+            { id: 'transcript', label: 'Transcript' },
+            { id: 'coaching', label: 'Coaching' },
+            { id: 'summary', label: 'Summary & Tasks' }
+          ] as const
+        ).map((t) => (
+          <button
+            key={t.id}
+            onClick={() => setTab(t.id)}
+            className={`relative -mb-px border-b-2 px-2.5 py-2 text-[12.5px] font-medium ${
+              tab === t.id
+                ? 'border-[#35c3d4] text-zinc-100'
+                : 'border-transparent text-zinc-500 hover:text-zinc-300'
+            }`}
+          >
+            {t.label}
+            {t.id !== 'transcript' && analysing && (
+              <span className="absolute -right-0.5 top-1.5 h-1.5 w-1.5 animate-pulse rounded-full bg-amber-300" />
+            )}
+          </button>
+        ))}
+      </div>
+
+      {tab !== 'transcript' && (
+        <InsightsPane
+          kind={tab}
+          transcriptId={transcript.id}
+          insights={insights}
+          hasSegments={segments.length > 0}
+        />
+      )}
+
+      <div className={`flex-1 overflow-y-auto px-6 py-4 ${tab === 'transcript' ? '' : 'hidden'}`}>
         {attendees.length > 0 && (
           <div className="mb-4 flex flex-wrap items-center gap-1.5">
             {attendees.map((a) => (
@@ -410,6 +461,169 @@ function TranscriptDetailView({
           ))}
         </div>
       </div>
+    </div>
+  )
+}
+
+/** Minimal markdown rendering for AI output: headings, bullets, bold. */
+function MarkdownLite({ text }: { text: string }) {
+  const bold = (s: string) =>
+    s.split(/\*\*([^*]+)\*\*/g).map((part, j) =>
+      j % 2 ? (
+        <strong key={j} className="font-semibold text-zinc-100">
+          {part}
+        </strong>
+      ) : (
+        part
+      )
+    )
+  return (
+    <div className="space-y-1.5 text-[13.5px] leading-relaxed text-zinc-200">
+      {text.split('\n').map((line, i) => {
+        if (/^#{1,3} /.test(line)) {
+          return (
+            <h3 key={i} className="pt-2 text-[11.5px] font-semibold uppercase tracking-widest text-zinc-400">
+              {line.replace(/^#+ /, '')}
+            </h3>
+          )
+        }
+        if (/^[-•*] /.test(line)) {
+          return (
+            <div key={i} className="flex gap-2 pl-1">
+              <span className="text-zinc-500">•</span>
+              <span>{bold(line.slice(2))}</span>
+            </div>
+          )
+        }
+        if (!line.trim()) return <div key={i} className="h-1" />
+        return <p key={i}>{bold(line)}</p>
+      })}
+    </div>
+  )
+}
+
+interface InsightTaskView {
+  title: string
+  details: string
+  dueInDays: number
+  contactEmail: string | null
+  hubspotTaskId?: string
+}
+
+function InsightsPane({
+  kind, transcriptId, insights, hasSegments
+}: {
+  kind: 'coaching' | 'summary'
+  transcriptId: number
+  insights: TranscriptInsights | null
+  hasSegments: boolean
+}) {
+  const [busy, setBusy] = useState(false)
+  const analysing = insights?.state === 'running' || insights?.state === 'pending'
+  const content = kind === 'coaching' ? insights?.coaching : insights?.summary
+
+  const generate = async () => {
+    setBusy(true)
+    try {
+      await window.mailflow.transcriptInsightsGenerate(transcriptId)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  let tasks: InsightTaskView[] = []
+  try {
+    tasks = JSON.parse(insights?.tasks_json ?? '[]')
+  } catch { /* none */ }
+
+  return (
+    <div className="flex-1 overflow-y-auto px-6 py-4">
+      {!content && (
+        <div className="flex h-40 flex-col items-center justify-center gap-3 text-center">
+          {analysing ? (
+            <>
+              <span className="h-2 w-2 animate-pulse rounded-full bg-amber-300" />
+              <span className="text-[13px] text-zinc-500">Analysing the call…</span>
+            </>
+          ) : insights?.state === 'failed' ? (
+            <>
+              <span className="max-w-[420px] text-[12.5px] text-red-400">{insights.last_error}</span>
+              <button onClick={generate} disabled={busy} className="rounded-md bg-white/8 px-3 py-1.5 text-[12.5px] font-medium text-zinc-200 hover:bg-white/12 disabled:opacity-50">
+                Retry analysis
+              </button>
+            </>
+          ) : (
+            <>
+              <span className="text-[13px] text-zinc-500">
+                {hasSegments ? 'No analysis yet for this meeting' : 'No transcript to analyse'}
+              </span>
+              {hasSegments && (
+                <button onClick={generate} disabled={busy} className="rounded-md bg-white/8 px-3 py-1.5 text-[12.5px] font-medium text-zinc-200 hover:bg-white/12 disabled:opacity-50">
+                  Generate analysis
+                </button>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
+      {content && kind === 'coaching' && (
+        <>
+          <div className="mb-3 rounded-md border border-white/8 bg-white/4 px-3 py-1.5 text-[11.5px] text-zinc-500">
+            Private to you — coaching never leaves this Mac.
+          </div>
+          <MarkdownLite text={content} />
+        </>
+      )}
+
+      {content && kind === 'summary' && (
+        <>
+          <div className="mb-3 flex items-center gap-2 rounded-md border border-white/8 bg-white/4 px-3 py-1.5 text-[11.5px]">
+            {insights?.hubspot_pushed_at ? (
+              <span className="text-emerald-400">✓ Pushed to HubSpot {formatTs(insights.hubspot_pushed_at)}</span>
+            ) : (
+              <span className="text-amber-300">Not in HubSpot yet</span>
+            )}
+            {insights?.hubspot_error && <span className="text-red-400">— {insights.hubspot_error}</span>}
+            {(insights?.hubspot_error || !insights?.hubspot_pushed_at) && (
+              <button
+                onClick={async () => {
+                  setBusy(true)
+                  try { await window.mailflow.transcriptInsightsRepush(transcriptId) } finally { setBusy(false) }
+                }}
+                disabled={busy}
+                className="ml-auto shrink-0 rounded bg-white/8 px-2 py-0.5 text-[11px] font-medium text-zinc-200 hover:bg-white/12 disabled:opacity-50"
+              >
+                {busy ? 'Pushing…' : 'Push to HubSpot'}
+              </button>
+            )}
+          </div>
+          <MarkdownLite text={content} />
+          {tasks.length > 0 && (
+            <div className="mt-5">
+              <h3 className="mb-2 text-[11.5px] font-semibold uppercase tracking-widest text-zinc-400">
+                Tasks {tasks.some((t) => t.hubspotTaskId) ? '(created in HubSpot)' : ''}
+              </h3>
+              <div className="space-y-2">
+                {tasks.map((t, i) => (
+                  <div key={i} className="rounded-lg border border-white/8 bg-white/4 px-3 py-2">
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-[13px] font-medium text-zinc-100">{t.title}</span>
+                      <span className="ml-auto shrink-0 text-[11px] text-zinc-500">
+                        due in {t.dueInDays}d{t.contactEmail ? ` · ${t.contactEmail}` : ''}
+                      </span>
+                      <span className={`shrink-0 text-[11px] ${t.hubspotTaskId ? 'text-emerald-400' : 'text-zinc-600'}`}>
+                        {t.hubspotTaskId ? '✓ HubSpot' : 'local'}
+                      </span>
+                    </div>
+                    {t.details && <div className="mt-0.5 text-[12.5px] text-zinc-400">{t.details}</div>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </>
+      )}
     </div>
   )
 }

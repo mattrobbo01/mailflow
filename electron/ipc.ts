@@ -169,6 +169,17 @@ export function buildHandlers(): Record<string, Handler> {
     'transcription:stop': () => stopRecording(),
     'transcription:isRecording': () => isRecording(),
     'transcription:list': (query?: string) => listTranscripts(query),
+    'transcript:insights': async (id: number) => (await import('./transcription/insights')).getInsights(id),
+    'transcript:insightsGenerate': async (id: number) => {
+      const { generateInsights } = await import('./transcription/insights')
+      generateInsights(id).catch((e) => console.error('[insights]', e?.message ?? e))
+      return true
+    },
+    'transcript:insightsRepush': async (id: number) => {
+      const { repushInsights } = await import('./transcription/insights')
+      await repushInsights(id)
+      return (await import('./transcription/insights')).getInsights(id)
+    },
     'transcription:get': (id: number) => getTranscript(id),
     'transcription:delete': (id: number) => deleteTranscript(id),
     'transcription:rename': (id: number, title: string) => renameTranscript(id, title),
