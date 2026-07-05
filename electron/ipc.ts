@@ -18,7 +18,7 @@ import { getInlineImages } from './sync/inline-images'
 import { getSignaturePreview, setSignature, getSignature, importSignatureFromSent } from './sync/signatures'
 import { startRecording, stopRecording, isRecording, listTranscripts, getTranscript, deleteTranscript, renameTranscript } from './transcription/sidecar'
 import { autodraftStatus, draftsForThread, regenerateDraft } from './autodraft/worker'
-import { liveMeetings } from './calendar/gcal'
+import { liveMeetings, eventsBetween } from './calendar/gcal'
 
 /**
  * Download an attachment to the local cache and return its path.
@@ -196,6 +196,8 @@ export function buildHandlers(): Record<string, Handler> {
       return true
     },
     'meetings:live': () => liveMeetings(),
+    // For external agents over the bridge (Robbo2 daily ingestion) — not in preload.
+    'calendar:eventsBetween': (fromTs: number, toTs: number) => eventsBetween(Number(fromTs), Number(toTs)),
 
     // ---- local drafts ----
     'drafts:list': () => getDb().prepare(`SELECT * FROM drafts ORDER BY updated_at DESC`).all(),
