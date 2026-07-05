@@ -99,6 +99,16 @@ export interface DraftRow {
   references_header: string | null
   attachments_json: string
   updated_at: number
+  ai_generated: number
+  ai_pristine: number
+}
+
+export interface AutodraftStatus {
+  jobId: number
+  state: 'pending' | 'running' | 'done' | 'skipped' | 'superseded' | 'failed'
+  triageReason: string | null
+  lastError: string | null
+  createdAt: number
 }
 
 export interface CategoryGroup {
@@ -157,6 +167,10 @@ declare global {
       draftsList: () => Promise<DraftRow[]>
       draftSave: (d: unknown) => Promise<number>
       draftDelete: (id: number) => Promise<boolean>
+      threadDrafts: (account: string, threadId: string) => Promise<DraftRow[]>
+      autodraftStatus: (account: string, threadId: string) => Promise<AutodraftStatus | null>
+      autodraftRegenerate: (account: string, threadId: string, guidance: string) => Promise<number>
+      onAutodraftUpdated: (cb: (p: { account: string; threadId: string; state: string }) => void) => () => void
       signatureGet: (account: string) => Promise<{ html: string } | null>
       signatureImport: (account: string) => Promise<{ html: string } | null>
       signatureSet: (account: string, html: string) => Promise<{ html: string } | null>
@@ -173,10 +187,12 @@ declare global {
       transcriptionRename: (id: number, title: string) => Promise<void>
       meetingsLive: () => Promise<unknown[]>
       notifyTest: () => Promise<boolean>
+      pillMoveBy: (dx: number, dy: number) => void
       attachmentOpen: (account: string, messageId: string, attachmentId: string, filename: string) => Promise<string>
       onTranscriptionEvent: (
         cb: (ev: { t: string; ch?: 'mic' | 'sys'; t0?: number; text?: string; spk?: number; rms?: number }) => void
       ) => () => void
+      onTranscriptionStarted: (cb: (p: { transcriptId: number; title: string }) => void) => () => void
       onTranscriptionFinished: (
         cb: (p: { transcriptId: number; error: string | null; exportedTo: string | null }) => void
       ) => () => void

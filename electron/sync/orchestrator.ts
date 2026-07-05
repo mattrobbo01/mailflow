@@ -1,5 +1,5 @@
 import { app, BrowserWindow, Notification } from 'electron'
-import { classifyThread, getDb, listAccounts } from '../db/db'
+import { getDb, listAccounts } from '../db/db'
 import type { NewMailNotice } from './incremental'
 import { connectedAccountEmails } from './auth'
 import { backfillAccount } from './backfill'
@@ -7,33 +7,34 @@ import { syncAccount } from './incremental'
 import { startDrainLoop } from './modifier-queue'
 import { processDueJobs } from './send'
 import { startHubSpotLoop } from '../hubspot/sync'
+import { runAutodraft } from '../autodraft/worker'
 import { broadcast } from '../broadcast'
 
-const FOCUSED_INTERVAL = 20_000
-const BLURRED_INTERVAL = 120_000
+// history.list costs 2 quota units against 15k/min — aggressive polling is
+// nearly free, and it's what closes the gap to push-based clients like Spark.
+const FOCUSED_INTERVAL = 10_000
+const BLURRED_INTERVAL = 30_000
 
 let timer: NodeJS.Timeout | null = null
 let running = false
 const backfilling = new Set<string>()
 
-/** Dock badge = unread, not-done, focused (people) inbox threads. */
+/** Dock badge = unread, not-done inbox threads across ALL categories. */
 export function updateBadge() {
   const row = getDb()
     .prepare(
       `SELECT COUNT(*) AS n FROM threads
-       WHERE is_inbox = 1 AND is_unread = 1 AND done_at IS NULL
-         AND (category IS NULL OR category = 'people')`
+       WHERE is_inbox = 1 AND is_unread = 1 AND done_at IS NULL`
     )
     .get() as { n: number }
   app.dock?.setBadge(row.n > 0 ? String(row.n) : '')
 }
 
-/** Banner per new focused-inbox email; noreply machines and category mail stay quiet. */
+/** Banner per new inbound email — people, notifications, and newsletters alike. */
 function notifyNewMail(notices: NewMailNotice[]) {
-  const interesting = notices.filter((n) => {
-    if (Date.now() / 1000 - n.ts > 10 * 60) return false // history replay after reopen — not "new"
-    return classifyThread(new Set(n.labels), [n.fromEmail ?? '']) === 'people'
-  })
+  const interesting = notices.filter(
+    (n) => Date.now() / 1000 - n.ts <= 10 * 60 // history replay after reopen — not "new"
+  )
   if (interesting.length === 0 || !Notification.isSupported()) return
 
   for (const n of interesting.slice(0, 3)) {
@@ -95,6 +96,9 @@ export async function tick(): Promise<void> {
     try {
       updateBadge()
     } catch { /* db not ready yet */ }
+    // Auto-draft sweep+process; NOT awaited — a slow draft run must never stall
+    // the sync loop (the worker has its own reentrancy guard).
+    runAutodraft({ maxJobs: 3 }).catch((e) => console.error('[autodraft]', e?.message ?? e))
   }
 }
 
@@ -102,6 +106,9 @@ export function startSyncLoop() {
   getDb() // ensure schema before first tick
   startDrainLoop()
   startHubSpotLoop()
+  // Push mail: IMAP IDLE kicks a sync the moment Gmail signals; the poll loop
+  // below stays on as the safety net (a dead socket degrades to poll latency).
+  import('./idle').then(({ startIdleListeners }) => startIdleListeners(() => tick()))
   // Signatures import themselves from sent mail on first run.
   import('./signatures').then(({ autoImportSignatures }) =>
     autoImportSignatures(connectedAccountEmails()).catch(() => {})

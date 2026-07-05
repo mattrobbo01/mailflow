@@ -67,6 +67,96 @@ export function emailDocument(sanitizedHtml: string): string {
     </style></head><body style="--mf-teal:#35c3d4">${sanitizedHtml}</body></html>`
 }
 
+/**
+ * Split the quoted reply trail (the embedded copy of earlier messages) off the
+ * end of a message body, so threads don't render every message N times.
+ * Detection covers the big client conventions: Gmail (div.gmail_quote),
+ * Apple Mail (blockquote[type=cite]), Outlook (#divRplyFwdMsg/#appendonsend),
+ * plus a generic trailing <blockquote>. Two safety rules keep it honest:
+ * only a TRAILING quote folds (interleaved point-by-point replies stay whole),
+ * and only when there's real fresh content before it (forwards stay whole).
+ */
+const QUOTE_SELECTOR =
+  'div.gmail_quote, blockquote[type="cite"], #divRplyFwdMsg, #appendonsend, div[id^="divRplyFwdMsg"], div[id^="x_divRplyFwdMsg"], blockquote'
+
+// Outlook-style MARKER headers ("From: … Sent: …"): the quoted message is the
+// content AFTER the marker, so the after-check doesn't apply to these.
+const MARKER_RE = /(^|\s)(divRplyFwdMsg|x_divRplyFwdMsg|appendonsend)($|\s)/
+
+function isMarker(el: Element): boolean {
+  return MARKER_RE.test(el.id) || MARKER_RE.test(el.className)
+}
+
+/**
+ * Gmail can place the sender's signature BELOW the quoted trail. That's
+ * boilerplate, not fresh content — it must not veto the fold (Gmail's own
+ * trimmer hides trailing signature + quote together behind the ••• too).
+ */
+function onlySignatureAfter(doc: Document, body: HTMLElement, el: Element, afterText: string): boolean {
+  if (/^--(\s|$)/.test(afterText)) return true // classic "-- " sig delimiter leads the after-content
+  const sig = Array.from(body.querySelectorAll('.gmail_signature')).find(
+    (s) =>
+      el.compareDocumentPosition(s) & Node.DOCUMENT_POSITION_FOLLOWING &&
+      !(el.compareDocumentPosition(s) & Node.DOCUMENT_POSITION_CONTAINED_BY)
+  )
+  if (!sig) return false
+  const gap = doc.createRange()
+  gap.setStartAfter(el)
+  gap.setEndBefore(sig)
+  return gap.toString().trim().length < 30 // nothing meaningful between quote and signature
+}
+
+export function splitQuotedTrail(sanitizedHtml: string): { main: string; hasQuoted: boolean } {
+  const doc = new DOMParser().parseFromString(sanitizedHtml, 'text/html')
+  const body = doc.body
+  if (!(body.textContent ?? '').trim()) return { main: sanitizedHtml, hasQuoted: false }
+
+  for (const el of Array.from(body.querySelectorAll(QUOTE_SELECTOR))) {
+    const before = doc.createRange()
+    before.setStart(body, 0)
+    before.setEndBefore(el)
+    const after = doc.createRange()
+    after.setStartAfter(el)
+    after.setEnd(body, body.childNodes.length)
+
+    if (before.toString().trim().length < 30) continue // forward / pure quote — the quote IS the message
+    // Interleaved reply or real content after the quote — keep visible.
+    const afterText = after.toString().trim()
+    if (!isMarker(el) && afterText.length > 120 && !onlySignatureAfter(doc, body, el, afterText)) continue
+
+    // Fold from the quote (and its cosmetic <hr> lead-in, Outlook-style) to the end.
+    let start: Element = el
+    if (start.previousElementSibling?.tagName === 'HR') start = start.previousElementSibling
+    const cut = doc.createRange()
+    cut.setStartBefore(start)
+    cut.setEnd(body, body.childNodes.length)
+    cut.deleteContents()
+    return { main: body.innerHTML, hasQuoted: true }
+  }
+  return { main: sanitizedHtml, hasQuoted: false }
+}
+
+/** Plain-text sibling of splitQuotedTrail: cut at "On … wrote:" / ">" trails. */
+export function splitQuotedText(text: string): { main: string; hasQuoted: boolean } {
+  const lines = text.split('\n')
+  const isMarker = (l: string) =>
+    /^On .{5,200} wrote:$/.test(l) || /^-{2,}\s*(Original|Forwarded) Message\s*-{2,}$/i.test(l)
+  const cut = lines.findIndex((raw) => {
+    const l = raw.trim()
+    return isMarker(l) || l.startsWith('>')
+  })
+  if (cut === -1) return { main: text, hasQuoted: false }
+
+  const main = lines.slice(0, cut).join('\n').trim()
+  if (main.length < 30) return { main: text, hasQuoted: false }
+  // Only fold when the remainder is genuinely a quote trail, not an
+  // interleaved reply with fresh answers between quoted lines.
+  const rest = lines.slice(cut).map((s) => s.trim()).filter(Boolean)
+  const quoted = rest.filter((s) => s.startsWith('>') || isMarker(s)).length
+  if (rest.length > 0 && quoted / rest.length < 0.7) return { main: text, hasQuoted: false }
+  return { main, hasQuoted: true }
+}
+
 /** Substitute cid: image references with resolved data: URLs. */
 export function resolveCids(html: string, cidMap: Record<string, string>): string {
   return html.replace(/(["'])cid:([^"']+)\1/gi, (match, quote, cid) => {

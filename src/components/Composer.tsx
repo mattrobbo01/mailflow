@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import DOMPurify from 'dompurify'
-import type { Account, Message, ThreadSummary } from '../types.d'
+import type { Account, DraftRow, Message, ThreadSummary } from '../types.d'
 
 export interface ComposerSeed {
   account: string
@@ -57,6 +57,18 @@ export function replySeed(
     threadId: thread.id,
     inReplyTo: message.message_id_header ?? undefined,
     references: message.references_header ?? undefined
+  }
+}
+
+/** Open a saved draft row in the composer (drafts list + in-thread draft cards). */
+export function draftSeed(d: DraftRow): ComposerSeed {
+  let attachments: ComposerSeed['attachments']
+  try { attachments = JSON.parse(d.attachments_json) } catch { attachments = [] }
+  return {
+    account: d.account, to: d.to_field, cc: d.cc_field, bcc: d.bcc_field,
+    subject: d.subject, body: d.body, quoted: d.quoted ?? undefined,
+    threadId: d.thread_id ?? undefined, inReplyTo: d.in_reply_to ?? undefined,
+    references: d.references_header ?? undefined, draftId: d.id, attachments
   }
 }
 

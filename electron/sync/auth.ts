@@ -8,8 +8,11 @@ import { join } from 'path'
 import { dataDir, upsertAccount } from '../db/db'
 
 export const SCOPES = [
-  'https://www.googleapis.com/auth/gmail.modify',
-  'https://www.googleapis.com/auth/gmail.send',
+  // Full mail scope (supersedes gmail.modify + gmail.send): required because
+  // Gmail's IMAP XOAUTH2 login only accepts https://mail.google.com/ — the
+  // IDLE push listener can't authenticate with the narrower REST scopes.
+  // Accounts consented before 2026-07-05 need a reconnect to pick this up.
+  'https://mail.google.com/',
   'https://www.googleapis.com/auth/calendar.readonly'
 ]
 

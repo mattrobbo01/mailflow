@@ -1,6 +1,7 @@
 import { google } from 'googleapis'
-import { BrowserWindow, Notification } from 'electron'
 import { getAuthClient, connectedAccountEmails } from '../sync/auth'
+import { showMeetingPopup } from '../meeting-popup'
+import { isRecording } from '../transcription/sidecar'
 
 export interface LiveMeeting {
   account: string
@@ -64,35 +65,20 @@ function extractMeetingLink(text: string): string | null {
 
 const notified = new Set<string>()
 
-/** Poll every minute; nudge the renderer shortly before a meeting with a video link starts. */
+/**
+ * Poll every minute; shortly before a meeting with a video link starts, show
+ * the Spark-style floating record prompt (always-on-top panel with Start
+ * recording / Dismiss — no need to bring MailFlow forward).
+ */
 export function startMeetingWatcher() {
   setInterval(async () => {
     try {
+      if (isRecording()) return // already capturing something — don't prompt over it
       const meetings = await liveMeetings()
       for (const m of meetings) {
         if (notified.has(m.eventId)) continue
         notified.add(m.eventId)
-        for (const win of BrowserWindow.getAllWindows()) {
-          win.webContents.send('meeting:detected', m)
-        }
-        // System notification with sound: visible over any app, top-right.
-        // Clicking it brings MailFlow forward with the record prompt showing.
-        if (Notification.isSupported()) {
-          const n = new Notification({
-            title: 'Meeting starting',
-            body: `Record “${m.title}”?`,
-            sound: 'default'
-          })
-          n.on('click', () => {
-            const win = BrowserWindow.getAllWindows()[0]
-            if (win) {
-              win.show()
-              win.focus()
-              win.webContents.send('meeting:detected', m)
-            }
-          })
-          n.show()
-        }
+        showMeetingPopup(m)
       }
     } catch {
       /* offline — try again next tick */

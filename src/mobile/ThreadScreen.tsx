@@ -1,19 +1,23 @@
 import { useEffect, useState } from 'react'
-import type { Message, ThreadSummary } from '../types.d'
-import { MessageCard, ScheduledCard } from '../components/ThreadView'
+import type { DraftRow, Message, ThreadSummary } from '../types.d'
+import {
+  DraftCard, DraftingCard, MessageCard, ScheduledCard, defaultCollapsed, useThreadDrafts
+} from '../components/ThreadView'
 
 const bar = { width: 22, height: 22, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const }
 
 export default function ThreadScreen({
-  thread, onBack, onPerson, onMessages, onReplyMessage, onForwardMessage,
+  thread, selfEmails, onBack, onPerson, onMessages, onReplyMessage, onForwardMessage, onEditDraft,
   onDone, onReply, onSnooze, onStar, onMore
 }: {
   thread: ThreadSummary
+  selfEmails: string[]
   onBack: () => void
   onPerson: () => void
   onMessages: (msgs: Message[]) => void
   onReplyMessage: (m: Message, all: boolean) => void
   onForwardMessage: (m: Message) => void
+  onEditDraft: (d: DraftRow) => void
   onDone: () => void
   onReply: () => void
   onSnooze: () => void
@@ -22,6 +26,8 @@ export default function ThreadScreen({
 }) {
   const [messages, setMessages] = useState<Message[] | null>(null)
   const [scheduled, setScheduled] = useState<{ id: number; send_at: number; payload: string }[]>([])
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
+  const { drafts, adStatus, reload: reloadDrafts } = useThreadDrafts(thread.account_id, thread.id)
 
   useEffect(() => {
     let alive = true
@@ -41,6 +47,12 @@ export default function ThreadScreen({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [thread.account_id, thread.id])
+
+  // Condense defaults recompute when messages land or accounts finish loading.
+  const selfKey = selfEmails.join(',')
+  useEffect(() => {
+    if (messages) setCollapsed(defaultCollapsed(messages, selfKey ? selfKey.split(',') : []))
+  }, [messages, selfKey])
 
   const starred = (JSON.parse(thread.label_ids) as string[]).includes('STARRED')
 
@@ -73,10 +85,30 @@ export default function ThreadScreen({
             key={m.id}
             message={m}
             showImages={true}
+            collapsed={collapsed.has(m.id)}
+            onToggle={() =>
+              setCollapsed((prev) => {
+                const next = new Set(prev)
+                if (next.has(m.id)) next.delete(m.id)
+                else next.add(m.id)
+                return next
+              })
+            }
             onReply={(all) => onReplyMessage(m, all)}
             onForward={() => onForwardMessage(m)}
           />
         ))}
+        {drafts.map((d) => (
+          <DraftCard
+            key={d.id}
+            draft={d}
+            busy={!!adStatus && (adStatus.state === 'pending' || adStatus.state === 'running')}
+            onEdit={() => onEditDraft(d)}
+            onDelete={() => window.mailflow.draftDelete(d.id).then(reloadDrafts)}
+          />
+        ))}
+        {adStatus && (adStatus.state === 'pending' || adStatus.state === 'running') &&
+          !drafts.some((d) => d.ai_generated) && <DraftingCard />}
         {scheduled.map((s) => (
           <ScheduledCard
             key={s.id}

@@ -34,6 +34,10 @@ const api = {
   draftsList: () => ipcRenderer.invoke('drafts:list'),
   draftSave: (d: unknown) => ipcRenderer.invoke('drafts:save', d),
   draftDelete: (id: number) => ipcRenderer.invoke('drafts:delete', id),
+  threadDrafts: (account: string, threadId: string) => ipcRenderer.invoke('thread:drafts', account, threadId),
+  autodraftStatus: (account: string, threadId: string) => ipcRenderer.invoke('autodraft:status', account, threadId),
+  autodraftRegenerate: (account: string, threadId: string, guidance: string) =>
+    ipcRenderer.invoke('autodraft:regenerate', account, threadId, guidance),
   signatureGet: (account: string) => ipcRenderer.invoke('signature:get', account),
   signatureImport: (account: string) => ipcRenderer.invoke('signature:import', account),
   signatureSet: (account: string, html: string) => ipcRenderer.invoke('signature:set', account, html),
@@ -50,6 +54,8 @@ const api = {
   transcriptionDelete: (id: number) => ipcRenderer.invoke('transcription:delete', id),
   transcriptionRename: (id: number, title: string) => ipcRenderer.invoke('transcription:rename', id, title),
   revealPath: (path: string) => ipcRenderer.invoke('shell:reveal', path),
+  // Recording-pill window only: manual drag (fire-and-forget for smoothness).
+  pillMoveBy: (dx: number, dy: number) => ipcRenderer.send('pill:moveBy', dx, dy),
   notifyTest: () => ipcRenderer.invoke('notify:test'),
   attachmentOpen: (account: string, messageId: string, attachmentId: string, filename: string) =>
     ipcRenderer.invoke('attachment:open', account, messageId, attachmentId, filename),
@@ -58,6 +64,11 @@ const api = {
     const listener = (_: unknown, ev: any) => cb(ev)
     ipcRenderer.on('transcription:event', listener)
     return () => ipcRenderer.removeListener('transcription:event', listener)
+  },
+  onTranscriptionStarted: (cb: (p: { transcriptId: number; title: string }) => void) => {
+    const listener = (_: unknown, p: any) => cb(p)
+    ipcRenderer.on('transcription:started', listener)
+    return () => ipcRenderer.removeListener('transcription:started', listener)
   },
   onTranscriptionFinished: (cb: (p: { transcriptId: number; error: string | null; exportedTo: string | null }) => void) => {
     const listener = (_: unknown, p: any) => cb(p)
@@ -73,6 +84,11 @@ const api = {
     const listener = (_: unknown, m: any) => cb(m)
     ipcRenderer.on('meeting:detected', listener)
     return () => ipcRenderer.removeListener('meeting:detected', listener)
+  },
+  onAutodraftUpdated: (cb: (p: { account: string; threadId: string; state: string }) => void) => {
+    const listener = (_: unknown, p: any) => cb(p)
+    ipcRenderer.on('autodraft:updated', listener)
+    return () => ipcRenderer.removeListener('autodraft:updated', listener)
   },
   onSyncUpdated: (cb: (payload: { account: string }) => void) => {
     const listener = (_: unknown, payload: { account: string }) => cb(payload)

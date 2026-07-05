@@ -122,6 +122,12 @@ export default function TranscriptsSection({
     }
   }, [query, listVersion])
 
+  // A recording that just finished (stopped from the pill or anywhere else)
+  // must appear in the list immediately, not on the next tab visit.
+  useEffect(() => {
+    return window.mailflow.onTranscriptionFinished(() => setListVersion((v) => v + 1))
+  }, [])
+
   // Auto-select the first transcript when the list loads and nothing is selected.
   useEffect(() => {
     if (items && items.length > 0 && selectedId === null) setSelectedId(items[0].id)

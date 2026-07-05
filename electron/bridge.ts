@@ -20,7 +20,7 @@ const PORT = 8484
 // (open-thread from a Mac banner click) stay desktop-only.
 const SSE_CHANNELS = new Set([
   'sync:updated', 'sync:backfill-progress', 'meeting:detected',
-  'transcription:event', 'transcription:finished'
+  'transcription:started', 'transcription:event', 'transcription:finished', 'autodraft:updated'
 ])
 
 const MIME: Record<string, string> = {

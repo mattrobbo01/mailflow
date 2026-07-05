@@ -96,6 +96,9 @@ export function installWebBridge() {
     draftsList: () => rpc('drafts:list'),
     draftSave: (d) => rpc('drafts:save', d),
     draftDelete: (id) => rpc('drafts:delete', id),
+    threadDrafts: (a, t) => rpc('thread:drafts', a, t),
+    autodraftStatus: (a, t) => rpc('autodraft:status', a, t),
+    autodraftRegenerate: (a, t, guidance) => rpc('autodraft:regenerate', a, t, guidance),
     signatureGet: (account) => rpc('signature:get', account),
     signatureImport: (account) => rpc('signature:import', account),
     signatureSet: (account, html) => rpc('signature:set', account, html),
@@ -118,8 +121,11 @@ export function installWebBridge() {
       window.open(`/attachment?${q}`, '_blank')
       return filename
     },
+    pillMoveBy: () => {}, // desktop pill window only — meaningless from a phone
     onSyncUpdated: on('sync:updated'),
+    onAutodraftUpdated: on('autodraft:updated'),
     onBackfillProgress: on('sync:backfill-progress'),
+    onTranscriptionStarted: on('transcription:started'),
     onTranscriptionEvent: on('transcription:event'),
     onTranscriptionFinished: on('transcription:finished'),
     onMeetingDetected: on('meeting:detected'),

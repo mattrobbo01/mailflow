@@ -31,11 +31,19 @@ so grants survive rebuilds). Icon: `swift scripts/make-icon.swift` → build/ico
 - `electron/db/` — schema.sql + migrations in db.ts `migrate()` (guarded by meta keys);
   queries.ts (views, FTS search compiler, category groups)
 - `electron/sync/` — auth.ts (OAuth loopback, safeStorage tokens), backfill.ts (2-pass:
-  12mo full bodies + all-history metadata), incremental.ts (history.list poll, 20s/2min),
+  12mo full bodies + all-history metadata), incremental.ts (history.list poll, 10s/30s fallback),
+  idle.ts (IMAP IDLE push per account → kicks tick(); requires https://mail.google.com/ scope,
+  pre-2026-07-05 consents must reconnect; a dead socket degrades to poll latency),
   modifier-queue.ts (Superhuman pattern: modify() local now, persist() drains `actions`
   per-thread), send.ts (MIME: alternative+related+mixed; signatures w/ inline images;
   scheduled_jobs), signatures.ts (auto-import from sent mail), inline-images.ts (cid→data)
 - `electron/hubspot/` — Service-Key client + 15-min sync; on-demand note fetch per contact
+- `electron/autodraft/` — AI auto-drafts for people-inbox mail: worker.ts (SQL sweep → triage →
+  draft; atomic job claims so app + runner can share the queue; pristine-AI-draft cleanup),
+  claude-code.ts (headless `claude -p` engine, subscription login, vault cwd + Read/Grep/Glob),
+  prompts.ts (context assembly: thread, person/HubSpot, sent-mail voice corpus, transcripts),
+  config.ts (autodraft.json: engine choice, models, caps). Drafts land in `drafts` with
+  ai_generated/ai_pristine; UI = DraftCard in ThreadView (steer box → autodraft:regenerate)
 - `electron/calendar/gcal.ts` — meeting watcher (60s; notify ~90s pre-start)
 - `electron/transcription/` — sidecar manager (JSONL stdio), echo dedup (mic vs sys text
   overlap ≥0.7 within 12s), robbo2-export.ts (vault frontmatter contract, `source: mailflow`)
@@ -69,7 +77,7 @@ so grants survive rebuilds). Icon: `swift scripts/make-icon.swift` → build/ico
   refreshThread auto-dones anything that leaves the inbox (not snoozed/trash/spam/sent-only);
   a reply to a done thread un-dones it.
 - Categories: Gmail CATEGORY_* labels + noreply-sender heuristic → people/notifications/newsletters.
-  Focused inbox, dock badge, and new-mail banners are people-only.
+  Focused inbox is people-only; dock badge and new-mail banners cover ALL categories (2026-07-05).
 - The open thread IS the list selection (single source of truth; no separate index state).
 - Gmail is source of truth for mail; MailFlow-local state = done_at, snoozed_until, drafts,
   category, people/hs_* caches, transcripts.

@@ -3,7 +3,7 @@ import type { Account, CategoryGroup, Message, ThreadSummary } from './types.d'
 import ThreadList from './components/ThreadList'
 import ThreadView from './components/ThreadView'
 import ConnectScreen from './components/ConnectScreen'
-import Composer, { ComposerSeed, replySeed, forwardSeed } from './components/Composer'
+import Composer, { ComposerSeed, replySeed, forwardSeed, draftSeed } from './components/Composer'
 import CommandPalette, { PaletteCommand } from './components/CommandPalette'
 import PeopleSidebar from './components/PeopleSidebar'
 import ShortcutsModal from './components/ShortcutsModal'
@@ -38,6 +38,9 @@ function DraftsList({ onOpen }: { onOpen: (d: DraftRow) => void }) {
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
               <span className="truncate text-[13px] font-medium text-zinc-200">{d.subject || '(no subject)'}</span>
+              {!!d.ai_generated && (
+                <span className="shrink-0 rounded-full bg-amber-400/15 px-1.5 py-px text-[10px] font-medium text-amber-300">AI</span>
+              )}
               <span className="ml-auto shrink-0 text-[11px] tabular-nums text-zinc-500">{formatTs(d.updated_at)}</span>
             </div>
             <div className="truncate text-[12px] text-zinc-500">to {d.to_field || '…'} · {d.account}</div>
@@ -84,6 +87,9 @@ export default function App() {
   const searchRef = useRef<HTMLInputElement>(null)
 
   const [composer, setComposer] = useState<ComposerSeed | null>(null)
+  // Bumped when the composer closes so in-thread draft cards refetch (a draft
+  // may have been saved, sent, or discarded).
+  const [draftsRefreshKey, setDraftsRefreshKey] = useState(0)
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const [keymap, setKeymap] = useState<Record<ActionId, Binding>>(loadKeymap)
@@ -101,9 +107,6 @@ export default function App() {
 
   const [backfill, setBackfill] = useState<Record<string, { phase: string; fetched: number }>>({})
   const [recording, setRecording] = useState<{ transcriptId: number; title: string } | null>(null)
-  const [meetingPrompt, setMeetingPrompt] = useState<{
-    eventId: string; title: string; attendees: { email: string; name?: string }[]
-  } | null>(null)
 
   const showToast = useCallback((t: Toast, ms = 5000) => {
     if (toastTimer.current) clearTimeout(toastTimer.current)
@@ -146,7 +149,9 @@ export default function App() {
   }, [refreshThreads, refreshAccounts])
 
   useEffect(() => {
-    const off1 = window.mailflow.onMeetingDetected((m) => setMeetingPrompt(m))
+    // Recordings can start from the floating meeting popup (its own window) —
+    // reflect them here so the live transcript panel appears.
+    const off1 = window.mailflow.onTranscriptionStarted((p) => setRecording(p))
     const off2 = window.mailflow.onTranscriptionFinished((p) => {
       setRecording(null)
       showToast({
@@ -164,7 +169,6 @@ export default function App() {
     try {
       const transcriptId = await window.mailflow.transcriptionStart(title, attendees, eventId)
       setRecording({ transcriptId, title })
-      setMeetingPrompt(null)
     } catch (e: any) {
       showToast({ message: `Could not start recording: ${e.message}` }, 8000)
     }
@@ -685,16 +689,7 @@ export default function App() {
             {view === 'drafts' ? (
               <DraftsList
                 key={composer ? 'composing' : 'idle'}
-                onOpen={(d) => {
-                  let attachments: ComposerSeed['attachments']
-                  try { attachments = JSON.parse(d.attachments_json) } catch { attachments = [] }
-                  setComposer({
-                    account: d.account, to: d.to_field, cc: d.cc_field, bcc: d.bcc_field,
-                    subject: d.subject, body: d.body, quoted: d.quoted ?? undefined,
-                    threadId: d.thread_id ?? undefined, inReplyTo: d.in_reply_to ?? undefined,
-                    references: d.references_header ?? undefined, draftId: d.id, attachments
-                  })
-                }}
+                onOpen={(d) => setComposer(draftSeed(d))}
               />
             ) : (
             <ThreadList
@@ -725,9 +720,12 @@ export default function App() {
           <section className="min-w-0 flex-1 pt-10">
             <ThreadView
               thread={openThread}
+              selfEmails={selfEmails}
               onMessages={(msgs) => { openMessagesRef.current = msgs }}
               onReplyMessage={(m, all) => setComposer(replySeed(openThread, m, selfEmails, all))}
               onForwardMessage={(m) => setComposer(forwardSeed(openThread, m))}
+              onEditDraft={(d) => setComposer(draftSeed(d))}
+              draftsRefreshKey={draftsRefreshKey}
               actions={{
                 onDone: () => doDone(openThread),
                 onArchive: () => doArchive(openThread),
@@ -757,7 +755,7 @@ export default function App() {
           accounts={connectedAccounts}
           seed={composer}
           leftOffset={navCollapsed ? 56 : 224}
-          onClose={() => setComposer(null)}
+          onClose={() => { setComposer(null); setDraftsRefreshKey((v) => v + 1) }}
           onSent={(undoId, summary) => {
             showToast({
               message: summary,
@@ -772,29 +770,11 @@ export default function App() {
       <CommandPalette open={paletteOpen} commands={paletteCommands} onClose={() => setPaletteOpen(false)} />
       <ShortcutsModal open={shortcutsOpen} keymap={keymap} onChange={setKeymap} onClose={() => setShortcutsOpen(false)} />
 
-      {meetingPrompt && !recording && (
-        <div className="fixed top-12 left-1/2 z-40 flex -translate-x-1/2 items-center gap-3 rounded-lg border border-zinc-700 bg-zinc-800 px-4 py-2.5 text-[13px] text-zinc-200 shadow-xl">
-          <span className="h-2 w-2 rounded-full bg-red-500" />
-          <span className="max-w-[280px] truncate">“{meetingPrompt.title}” looks live — record it?</span>
-          <button
-            onClick={() =>
-              startMeetingRecording(
-                meetingPrompt.title,
-                meetingPrompt.attendees.map((a) => a.email),
-                meetingPrompt.eventId
-              )
-            }
-            className="rounded-md bg-red-600/90 px-2.5 py-1 text-[12px] font-medium text-white hover:bg-red-500"
-          >
-            Record
-          </button>
-          <button onClick={() => setMeetingPrompt(null)} className="text-zinc-500 hover:text-zinc-300">
-            Dismiss
-          </button>
-        </div>
+      {/* Recording is background-first: the floating pill is the global presence;
+          the live transcript view only shows inside the Transcripts section. */}
+      {section === 'transcripts' && (
+        <TranscriptPanel recording={recording} onStop={() => window.mailflow.transcriptionStop()} />
       )}
-
-      <TranscriptPanel recording={recording} onStop={() => window.mailflow.transcriptionStop()} />
 
       {toast && (
         <div className="fixed bottom-5 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-lg border border-zinc-700 bg-zinc-800 px-4 py-2 text-[13px] text-zinc-200 shadow-xl">

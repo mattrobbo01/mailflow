@@ -17,6 +17,7 @@ import { getPersonContext, hubspotStatus, syncHubSpot } from './hubspot/sync'
 import { getInlineImages } from './sync/inline-images'
 import { getSignaturePreview, setSignature, getSignature, importSignatureFromSent } from './sync/signatures'
 import { startRecording, stopRecording, isRecording, listTranscripts, getTranscript, deleteTranscript, renameTranscript } from './transcription/sidecar'
+import { autodraftStatus, draftsForThread, regenerateDraft } from './autodraft/worker'
 import { liveMeetings } from './calendar/gcal'
 
 /**
@@ -111,6 +112,7 @@ export function buildHandlers(): Record<string, Handler> {
     'message:inlineImages': (account: string, messageId: string) => getInlineImages(account, messageId),
 
     'sync:now': () => tick(),
+    'sync:idleStatus': async () => (await import('./sync/idle')).idleStatus(),
 
     // ---- actions (modifier queue) ----
     'thread:archive': (a: string, t: string) => archiveThread(a, t),
@@ -146,8 +148,24 @@ export function buildHandlers(): Record<string, Handler> {
     'hubspot:status': () => hubspotStatus(),
 
     // ---- transcription ----
-    'transcription:start': (title: string, attendees: string[], eventId?: string) =>
-      startRecording(title, attendees, eventId),
+    'transcription:start': async (title: string, attendees: string[], eventId?: string) => {
+      const transcriptId = await startRecording(title, attendees, eventId)
+      // Recording runs in the background: the floating pill is the visible
+      // presence (hover → stop); surfaces sync via the started broadcast.
+      const { showRecordingPill } = await import('./recording-pill')
+      showRecordingPill(title)
+      const { broadcast } = await import('./broadcast')
+      broadcast('transcription:started', { transcriptId, title })
+      return transcriptId
+    },
+    'meeting:testPopup': async () => {
+      const { showMeetingPopup } = await import('./meeting-popup')
+      showMeetingPopup({
+        account: 'test', eventId: `test-${Math.random().toString(36).slice(2)}`,
+        title: 'Test meeting — popup preview', start: 0, end: 0, attendees: [], conferenceLink: ''
+      })
+      return true
+    },
     'transcription:stop': () => stopRecording(),
     'transcription:isRecording': () => isRecording(),
     'transcription:list': (query?: string) => listTranscripts(query),
@@ -184,9 +202,10 @@ export function buildHandlers(): Record<string, Handler> {
     'drafts:save': (d: any) => {
       const db = getDb()
       if (d.id) {
+        // A manual save means Matt touched it — the auto-draft cleaner keeps hands off.
         db.prepare(
           `UPDATE drafts SET account=?, to_field=?, cc_field=?, bcc_field=?, subject=?, body=?, quoted=?,
-             thread_id=?, in_reply_to=?, references_header=?, attachments_json=?, updated_at=unixepoch()
+             thread_id=?, in_reply_to=?, references_header=?, attachments_json=?, ai_pristine=0, updated_at=unixepoch()
            WHERE id=?`
         ).run(d.account, d.to ?? '', d.cc ?? '', d.bcc ?? '', d.subject ?? '', d.body ?? '', d.quoted ?? null,
           d.threadId ?? null, d.inReplyTo ?? null, d.references ?? null, JSON.stringify(d.attachments ?? []), d.id)
@@ -201,6 +220,12 @@ export function buildHandlers(): Record<string, Handler> {
       return Number(res.lastInsertRowid)
     },
     'drafts:delete': (id: number) => getDb().prepare(`DELETE FROM drafts WHERE id = ?`).run(id).changes > 0,
+
+    // ---- auto-drafts ----
+    'thread:drafts': (account: string, threadId: string) => draftsForThread(account, threadId),
+    'autodraft:status': (account: string, threadId: string) => autodraftStatus(account, threadId),
+    'autodraft:regenerate': (account: string, threadId: string, guidance: string) =>
+      regenerateDraft(account, threadId, guidance),
 
     // ---- recipient autocomplete ----
     'contacts:suggest': (q: string) => {

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Account, CategoryGroup, DraftRow, Message, ThreadSummary } from '../types.d'
-import { ComposerSeed, replySeed, forwardSeed } from '../components/Composer'
+import { ComposerSeed, replySeed, forwardSeed, draftSeed } from '../components/Composer'
 import InboxScreen, { MobileView } from './InboxScreen'
 import ThreadScreen from './ThreadScreen'
 import SearchScreen from './SearchScreen'
@@ -279,16 +279,7 @@ export default function MobileApp() {
           <div className="min-h-0 flex-1 overflow-y-auto">
             <MobileDrafts
               onBack={() => setView('inbox')}
-              onOpen={(d) => {
-                let attachments: ComposerSeed['attachments']
-                try { attachments = JSON.parse(d.attachments_json) } catch { attachments = [] }
-                setComposer({
-                  account: d.account, to: d.to_field, cc: d.cc_field, bcc: d.bcc_field,
-                  subject: d.subject, body: d.body, quoted: d.quoted ?? undefined,
-                  threadId: d.thread_id ?? undefined, inReplyTo: d.in_reply_to ?? undefined,
-                  references: d.references_header ?? undefined, draftId: d.id, attachments
-                })
-              }}
+              onOpen={(d) => setComposer(draftSeed(d))}
             />
           </div>
         </div>
@@ -320,11 +311,13 @@ export default function MobileApp() {
       {openThread && (
         <ThreadScreen
           thread={openThread}
+          selfEmails={selfEmails}
           onBack={() => setOpenThread(null)}
           onPerson={() => setPersonOpen(true)}
           onMessages={(msgs) => { openMessagesRef.current = msgs }}
           onReplyMessage={(m, all) => setComposer(replySeed(openThread, m, selfEmails, all))}
           onForwardMessage={(m) => setComposer(forwardSeed(openThread, m))}
+          onEditDraft={(d) => setComposer(draftSeed(d))}
           onDone={() => doDone(openThread)}
           onReply={() => doReply()}
           onSnooze={() => setSnoozeFor(openThread)}

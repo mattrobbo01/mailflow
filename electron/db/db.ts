@@ -70,6 +70,35 @@ function migrate(d: Database.Database) {
     updated_at INTEGER DEFAULT (unixepoch())
   )`)
 
+  // Auto-draft pipeline: job queue + AI flags on drafts. ai_pristine means the body
+  // is untouched machine output — the only kind the worker is allowed to clean up.
+  d.exec(`CREATE TABLE IF NOT EXISTS autodraft_jobs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    account_id TEXT NOT NULL,
+    thread_id TEXT NOT NULL,
+    message_id TEXT NOT NULL,
+    state TEXT DEFAULT 'pending',    -- pending | running | done | skipped | superseded | failed
+    guidance TEXT,                   -- steer text on regenerations (skips triage)
+    triage_reason TEXT,
+    draft_id INTEGER,
+    attempts INTEGER DEFAULT 0,
+    last_error TEXT,
+    created_at INTEGER DEFAULT (unixepoch()),
+    processed_at INTEGER
+  )`)
+  d.exec(`CREATE INDEX IF NOT EXISTS idx_autodraft_pending ON autodraft_jobs(state, created_at)`)
+  d.exec(`CREATE INDEX IF NOT EXISTS idx_autodraft_thread ON autodraft_jobs(account_id, thread_id, created_at DESC)`)
+  try {
+    d.exec(`ALTER TABLE drafts ADD COLUMN ai_generated INTEGER DEFAULT 0`)
+  } catch {
+    /* column exists */
+  }
+  try {
+    d.exec(`ALTER TABLE drafts ADD COLUMN ai_pristine INTEGER DEFAULT 0`)
+  } catch {
+    /* column exists */
+  }
+
   // One-time cleanup: snippets stored before entity decoding was added.
   const decoded = d.prepare(`SELECT value FROM meta WHERE key = 'snippets:decoded'`).get()
   if (!decoded) {
