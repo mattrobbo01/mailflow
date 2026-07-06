@@ -49,6 +49,12 @@ so grants survive rebuilds). Icon: `swift scripts/make-icon.swift` → build/ico
   overlap ≥0.7 within 12s), robbo2-export.ts (vault frontmatter contract, `source: mailflow`)
 - `electron/runner.ts` — `MailFlow --runner` headless: fires scheduled sends/unsnoozes
   (launchd/com.mattrobertson.mailflow.runner.plist; install via scripts/install-launchd.sh)
+- `mcp/` — read-only stdio MCP server over mailflow.db (own package, built-in node:sqlite —
+  NOT better-sqlite3, no ABI coupling to Electron; `npm run build` in mcp/ after changes).
+  Six tools (search_email, get_thread, list_recent, list_transcripts, get_transcript,
+  list_accounts); table allowlist in mcp/src/db.ts; quoted-trail folding in mcp/src/text.ts
+  is a port of splitQuotedText from src/lib/sanitize.ts — keep in lockstep. Registered in
+  Claude Desktop config + `claude mcp` user scope. Tests: mcp/test/acceptance.mjs.
 - `electron/bridge.ts` — iPhone PWA bridge (OFF by default; `"enabled": true` in bridge.json
   opts in): HTTP server on 0.0.0.0:8484 serving out/renderer
   as the app shell + the ipc.ts handler map over `POST /rpc/:channel` + SSE `GET /events`

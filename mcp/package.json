@@ -1,0 +1,21 @@
+{
+  "name": "mailflow-mcp",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Read-only MCP server over MailFlow's local SQLite store (both Gmail accounts + meeting transcripts)",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "node src/index.ts",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.15.0",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.0",
+    "typescript": "^5.8.0"
+  }
+}
