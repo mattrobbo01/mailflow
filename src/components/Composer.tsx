@@ -189,10 +189,12 @@ export function RecipientInput({
   const [sugs, setSugs] = useState<{ email: string; name: string | null }[]>([])
   const [sel, setSel] = useState(0)
   const [open, setOpen] = useState(false)
+  // Seeded values (replies, AI drafts) must not pop the typeahead — only real typing arms it.
+  const typedRef = useRef(false)
   const query = (value.split(',').pop() ?? '').trim()
 
   useEffect(() => {
-    if (query.length < 2) {
+    if (!typedRef.current || query.length < 2) {
       setOpen(false)
       return
     }
@@ -237,7 +239,7 @@ export function RecipientInput({
       <input
         ref={inputRef}
         value={value}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(e) => { typedRef.current = true; onChange(e.target.value) }}
         onKeyDown={onKeyDown}
         onBlur={() => setTimeout(() => setOpen(false), 150)}
         placeholder={placeholder}
