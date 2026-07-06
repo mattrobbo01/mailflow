@@ -68,7 +68,7 @@ app.whenReady().then(() => {
   setDockIcon()
   registerIpc()
   bootLog('ipc registered')
-  startBridge() // iPhone PWA access over the LAN
+  startBridge() // iPhone PWA access over the LAN (no-op unless enabled in bridge.json)
   bootLog('bridge starting')
   createWindow()
   bootLog('window created')

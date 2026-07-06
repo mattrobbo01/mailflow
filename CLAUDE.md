@@ -49,7 +49,8 @@ so grants survive rebuilds). Icon: `swift scripts/make-icon.swift` → build/ico
   overlap ≥0.7 within 12s), robbo2-export.ts (vault frontmatter contract, `source: mailflow`)
 - `electron/runner.ts` — `MailFlow --runner` headless: fires scheduled sends/unsnoozes
   (launchd/com.mattrobertson.mailflow.runner.plist; install via scripts/install-launchd.sh)
-- `electron/bridge.ts` — iPhone PWA bridge: HTTP server on 0.0.0.0:8484 serving out/renderer
+- `electron/bridge.ts` — iPhone PWA bridge (OFF by default; `"enabled": true` in bridge.json
+  opts in): HTTP server on 0.0.0.0:8484 serving out/renderer
   as the app shell + the ipc.ts handler map over `POST /rpc/:channel` + SSE `GET /events`
   (whitelist in SSE_CHANNELS) + `GET /attachment`. Pairing key in
   `~/Library/Application Support/MailFlow/bridge.json`; data routes require it

@@ -3,15 +3,15 @@
 MailFlow talks directly to the Gmail API from your Mac. You need two OAuth clients
 (one per Google account) because the accounts live in different worlds:
 
-- **matt@usehabits.com** → an *Internal* app inside your Workspace org. No verification,
+- **Your Workspace account** → an *Internal* app inside your Workspace org. No verification,
   no warnings, refresh tokens never expire.
-- **matthew.g.robertson@gmail.com** → an *External* app left in *Testing* mode. Works
+- **Your personal @gmail.com account** → an *External* app left in *Testing* mode. Works
   immediately, but Google expires testing-mode refresh tokens every 7 days — MailFlow
   shows a one-click Reconnect when that happens (~5 seconds).
 
-## 1. Work account (usehabits.com) — Internal app
+## 1. Work account (Google Workspace) — Internal app
 
-1. Go to https://console.cloud.google.com **while signed in as matt@usehabits.com**.
+1. Go to https://console.cloud.google.com **while signed in as your Workspace account**.
 2. Create a project (e.g. `mailflow`).
 3. **APIs & Services → Library** → enable **Gmail API** and **Google Calendar API**.
 4. **APIs & Services → OAuth consent screen** → User type: **Internal** → fill in app
@@ -25,10 +25,10 @@ MailFlow talks directly to the Gmail API from your Mac. You need two OAuth clien
 
 ## 2. Personal account (gmail.com) — External app in Testing
 
-1. Same flow, but in a project owned by **matthew.g.robertson@gmail.com**
+1. Same flow, but in a project owned by **your personal Google account**
    (or the same project if you prefer — the consent screen type is what matters).
 2. OAuth consent screen → User type: **External** → Publishing status: leave in **Testing**.
-3. Add `matthew.g.robertson@gmail.com` under **Test users**.
+3. Add your personal address under **Test users**.
 4. Enable **Gmail API** + **Google Calendar API**, create an OAuth client as above.
 
 ## 3. Give the credentials to MailFlow
@@ -55,8 +55,9 @@ while it runs; newest mail lands first.
 
 ## Scopes requested
 
-- `gmail.modify` — read mail, change labels (archive/read/snooze)
-- `gmail.send` — send and schedule mail
+- `https://mail.google.com/` — full mail access: read/modify/send via the Gmail API,
+  plus IMAP for IDLE push notifications (the narrower `gmail.modify` + `gmail.send`
+  pair worked until push mail landed; IMAP requires the full scope)
 - `calendar.readonly` — detect meetings for transcription and attribute attendees
 
 ## Notes

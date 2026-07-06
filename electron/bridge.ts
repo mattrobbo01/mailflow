@@ -46,6 +46,7 @@ const MIME: Record<string, string> = {
 }
 
 interface BridgeConfig {
+  enabled: boolean
   token: string
   port: number
 }
@@ -55,12 +56,14 @@ function loadConfig(): BridgeConfig {
   try {
     const raw = JSON.parse(readFileSync(path, 'utf8'))
     if (typeof raw.token === 'string' && raw.token.length >= 16) {
-      return { token: raw.token, port: Number(raw.port) || PORT }
+      return { enabled: raw.enabled === true, token: raw.token, port: Number(raw.port) || PORT }
     }
   } catch {
     /* first run */
   }
-  const config = { token: randomBytes(24).toString('hex'), port: PORT }
+  // Off by default: the bridge exposes the full mail surface (key-gated) on the
+  // local network, so it must be a deliberate opt-in via "enabled": true.
+  const config = { enabled: false, token: randomBytes(24).toString('hex'), port: PORT }
   const { writeFileSync } = require('fs') as typeof import('fs')
   writeFileSync(path, JSON.stringify(config, null, 2))
   return config
@@ -117,6 +120,10 @@ export function getBridgeInfo() {
 
 export function startBridge() {
   const config = loadConfig()
+  if (!config.enabled) {
+    bridgeLog('bridge disabled (set "enabled": true in bridge.json to serve the iPhone PWA)')
+    return
+  }
   const staticRoot = join(__dirname, '../renderer')
 
   // Diagnostic probe: loopback binds are never privacy-gated on macOS; if this

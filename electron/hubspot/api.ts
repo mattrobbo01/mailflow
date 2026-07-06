@@ -1,6 +1,6 @@
 // Thin HubSpot CRM v3/v4 API client. Plain fetch, no SDK.
 // Auth: Private App token read from ~/Library/Application Support/MailFlow/hubspot.json
-//   → {"token": "pat-...", "portalId": "45088531"}   (portalId optional, used for deep links)
+//   → {"token": "pat-...", "portalId": "12345678"}   (portalId optional, used for deep links)
 // If the file is missing all sync callers no-op gracefully via isConfigured().
 
 import { readFileSync } from 'fs'
