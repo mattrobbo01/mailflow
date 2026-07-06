@@ -16,7 +16,15 @@ an iPhone PWA landed over the days that followed. Sister project:
 [LocalFlow](https://github.com/mattrobbo01/LocalFlow), a fully local voice dictation
 app whose ASR stack this reuses.
 
-<!-- TODO: screenshots (redacted inbox, thread view with an AI draft card, person sidebar, transcript insights) -->
+![MailFlow: inbox, thread view, and the HubSpot person sidebar](docs/screenshot-desktop.png)
+
+An AI-drafted reply waiting inline on a real thread, with one-box steering and
+regenerate; and the person sidebar with live CRM context. (All names, companies,
+and contact details in these screenshots are randomised demo data.)
+
+![An AI auto-draft awaiting review at the bottom of a thread](docs/screenshot-ai-draft.png)
+
+<img src="docs/screenshot-sidebar.png" width="340" alt="HubSpot person sidebar: contact card, open deals, call notes, recent threads">
 
 ## Why build an email client
 
